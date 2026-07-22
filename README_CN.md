@@ -5,7 +5,7 @@
 <p align="center">
   <h1 align="center">Go Seckill · 企业级分布式秒杀</h1>
   <p align="center">
-    <strong>Production-Ready</strong> · Go 1.26 · Vue 3 · Redis Cluster · Sentinel · Prometheus
+    <strong>生产级</strong> · Go 1.26 · Vue 3 · Redis Cluster · Sentinel · Prometheus
   </p>
 </p>
 
@@ -20,44 +20,44 @@
 
 ---
 
-## Why This Project?
+## 为什么选择本项目？
 
-Most seckill projects on GitHub are **teaching-level** — single-service, minimal protection, no observability. This one is **production-grade**.
+GitHub 上大多数秒杀项目是**教学级别**——单体服务、简单防护、无可观测性。本项目是**生产级别**。
 
-|  | Teaching-Level | Go Seckill |
+|  | 教学级项目 | Go Seckill |
 |---|---|---|
-| Architecture | Monolithic | **Six-Layer Enterprise** (Gateway → Services → Traffic Control → Middleware → Data HA → Observability) |
-| Rate Limiting | Annotation-based | **Sentinel** with layered circuit-breaking, admin whitelist |
-| Cache | Manual Redis ops | **Redis Cluster + Lua** atomic verification, dynamic purchase limits |
-| Security | Plain endpoints | **Hidden path + Math captcha**, one-time tokens |
-| Orders | Basic delivery | **TTL+DLX** 30-min auto-close, idempotency |
-| Observability | None | **Prometheus + Grafana + ELK + DingTalk alerts** |
-| Deployment | Manual config | **Docker Compose** one-click |
+| 架构 | 单体 | **六层企业架构**（网关 → 服务 → 流量控制 → 中间件 → 数据高可用 → 可观测运维） |
+| 限流 | 注解拦截 | **Sentinel** 分层熔断降级，管理员白名单豁免 |
+| 缓存 | 手动 Redis 操作 | **Redis Cluster + Lua** 原子校验，动态限购 |
+| 安全 | 明文接口 | **隐藏地址 + 数学验证码**，一次性 Token |
+| 订单 | 基础投递 | **TTL+DLX** 30分钟自动关单，幂等性校验 |
+| 运维 | 无 | **Prometheus + Grafana + ELK + 钉钉告警** |
+| 部署 | 手动配置 | **Docker Compose** 一键启动 |
 
-> **1600 QPS, 8000 concurrent, 100% success rate, zero oversell.** Built from scratch with no flash-sale framework.
+> **单机 1600 QPS，8000 并发，100% 成功率，零超卖。** 从零手写，不依赖任何秒杀框架。
 
 <table>
 <tr>
 <td width="50%">
 
-### Architecture
-- **Six-Layer Enterprise Architecture**: Access → Service Cluster → Traffic Protection → Middleware → Data HA → Observability
-- **Redis Cluster Pre-warming**: Cache on product launch, no MySQL during seckill
-- **Lua Atomic Deduction**: Inventory + idempotency + purchase limit, one RTT
-- **Singleflight Merge**: 256 shards, 50ms window dedup
-- **Snowflake Distributed ID**: 1024 buffer channels, lock-free
-- **Hidden Seckill Path**: 32-char dynamic token, 60s TTL, one-time use (anti-script)
-- **Math Captcha**: Random arithmetic, server-side answer verification, instant deletion (anti-bot)
+### 架构能力
+- **六层企业架构**：接入层 → 服务集群 → 流量防护 → 中间件 → 数据高可用 → 可观测运维
+- **Redis Cluster 库存预热**：上架即预热，秒杀全程不查 MySQL
+- **Lua 原子扣减**：库存扣减 + 幂等校验 + 限购计数三合一，一次 RTT
+- **Singleflight 请求合并**：256 分片，50ms 窗口去重
+- **Snowflake 分布式 ID**：1024 缓冲通道，无锁获取
+- **秒杀地址隐藏**：动态生成 32 位 Path Token，60s 有效期，一次性校验（防脚本）
+- **数学验证码**：随机算式 + Redis 后端校验，答案校验后立即删除（防自动化）
 
 </td>
 <td width="50%">
 
-### Engineering
-- **Sentinel Global Rate Limiting**: QPS + hot-param + admin whitelist
-- **Layered Circuit Breaking**: Slow calls / error ratio / error count, differentiated messages
-- **TTL+DLX Delayed Orders**: 30-min auto-cancel, inventory return
-- **Scheduled Reconciliation**: Redis-MySQL inventory fix every 5 min
-- **AI Anomaly Detection**: Sliding window + Z-Score, bot detection
+### 工程实践
+- **Sentinel 全局限流**：QPS + 热点参数 + 管理员白名单豁免
+- **分层熔断降级**：慢调用 / 异常比例 / 异常数，差异化提示
+- **TTL+DLX 延迟订单**：30 分钟未支付自动取消，归还库存
+- **定时对账**：Redis-MySQL 库存 5 分钟自动修复
+- **AI 异常检测**：滑动窗口 + Z-Score，识别黄牛脚本
 
 </td>
 </tr>
@@ -65,7 +65,7 @@ Most seckill projects on GitHub are **teaching-level** — single-service, minim
 
 ---
 
-## Performance
+## 性能基准
 
 | 并发 | QPS | P50 | P99 | 成功率 |
 |:---:|:---:|:---:|:---:|:---:|
@@ -77,11 +77,11 @@ Most seckill projects on GitHub are **teaching-level** — single-service, minim
 | **5000** | **1614** | 1702ms | 2967ms | **100%** |
 | 8000 | 1458 | 3068ms | 5346ms | 100% |
 
->   Windows single-machine, i7-12700H, 32GB RAM. Peak QPS=1614, inflection at 8000 concurrent (P99 > 5s).
+> Windows 单机，i7-12700H，32GB RAM。峰值 QPS=1614，拐点 8000 并发（P99 突破 5s）。
 
 ---
 
-## Architecture
+## 架构概览
 
 ```
                     ┌──────────────┐
@@ -121,9 +121,9 @@ Most seckill projects on GitHub are **teaching-level** — single-service, minim
 
 ---
 
-## Quick Start
+## 快速开始
 
-### One-Click Deploy (Docker)
+### 一键部署（Docker）
 
 ```bash
 # 克隆项目
@@ -138,12 +138,12 @@ cp .env.example .env
 docker compose up -d
 
 # 访问
-#  Frontend:    http://localhost
-#  Grafana:     http://localhost:3000 (admin/admin)
-#  RabbitMQ:    http://localhost:15672
+#  前端:      http://localhost
+#  Grafana:   http://localhost:3000 (admin/admin)
+#  RabbitMQ:  http://localhost:15672
 ```
 
-### Local Development
+### 本地开发
 
 ```bash
 # 启动中间件
@@ -156,7 +156,7 @@ go mod tidy && go run ./cmd/
 cd frontend && npm install && npm run dev
 ```
 
-### Stress Test
+### 压测
 
 ```bash
 go run ./stress_test/cmd/setup/    # 初始化测试数据
@@ -166,7 +166,7 @@ go run ./stress_test/cmd/limit/    # 极限压测
 
 ---
 
-## Tech Stack
+## 技术栈
 
 | 层级 | 技术选型 | 说明 |
 |:---|:---|:---|
@@ -184,7 +184,7 @@ go run ./stress_test/cmd/limit/    # 极限压测
 
 ---
 
-## Project Structure
+## 项目结构
 
 ```
 miaosha/
@@ -216,102 +216,16 @@ miaosha/
 
 ---
 
-## Core Design
-
-<details>
-<summary><b>  秒杀流程时序图</b></summary>
-
-```
-用户 → Nginx → Gin → Sentinel(限流) → Singleflight(去重)
-                                        ↓
-                              Redis Lua(库存扣减+幂等+限购)
-                                        ↓
-                              RabbitMQ(异步下单) → MySQL(持久化)
-                                        ↓
-                              WebSocket(实时推送结果)
-```
-</details>
-
-<details>
-<summary><b>️ 延迟订单自动取消流程</b></summary>
-
-```
-下单成功 → 发送延迟消息(TTL 30min) → 过期进入 DLX
-                                        ↓
-                              消费者检查订单状态
-                              ├─ 已支付 → 忽略
-                              └─ 未支付 → 关闭订单 + 归还库存
-```
-</details>
-
-<details>
-<summary><b>  分层熔断降级策略</b></summary>
-
-| 层级 | 触发条件 | 降级策略 | 提示文案 |
-|:---|:---|:---|:---|
-| 限流层 | QPS 超阈值 | 拒绝请求 | "活动太火爆，请稍后再试" |
-| 库存层 | Redis 库存不足 | 返回售罄 | "已售罄，下次早点来" |
-| 中间件层 | Redis/MQ 故障 | 数据库兜底 | "系统繁忙，请稍后重试" |
-| 服务层 | 异常率过高 | 快速失败 | "服务暂时不可用" |---
-</details>
-
----
-
-## Security
+## 安全防护
 
 ### 1. 秒杀地址隐藏
 
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant F as 前端
-    participant B as 后端
-    participant R as Redis
-
-    U->>F: 点击秒杀按钮
-    F->>B: GET /api/v1/seckill/path?product_id=1
-    B->>B: 生成 32位随机 Path Token
-    B->>R: SET path + TTL 60s
-    B-->>F: 返回 path_token
-    F->>B: POST /api/v1/seckill (携带 path_token)
-    B->>R: Lua: GET+DEL path_token
-    R-->>B: 校验结果
-    alt 校验通过
-        B->>B: 继续秒杀流程
-    else 校验失败
-        B-->>F: 400 "秒杀地址已失效"
-    end
-```
-
 - **动态生成**：每次点击秒杀按钮，后端生成新的 32 位 hex Token
 - **一次性使用**：Lua 脚本 GET + DEL 原子操作，校验后立即删除
-- **60s 有效期**：防止Token被截获后长期滥用
+- **60s 有效期**：防止 Token 被截获后长期滥用
 - **管理员豁免**：admin/super_admin 角色跳过校验
 
 ### 2. 数学验证码
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant F as 前端
-    participant B as 后端
-    participant R as Redis
-
-    U->>F: 进入秒杀页面
-    F->>B: GET /api/v1/seckill/captcha?product_id=1
-    B->>B: 生成随机算式 (如 "9+7*3")
-    B->>R: SET captcha_id + answer + TTL 120s
-    B-->>F: 返回算式 + captcha_id
-    U->>F: 用户计算并输入答案
-    F->>B: POST /api/v1/seckill (携带 captcha_code + captcha_id)
-    B->>R: Lua: GET+DEL captcha 答案
-    R-->>B: 校验结果
-    alt 答案正确
-        B->>B: 继续秒杀流程
-    else 答案错误
-        B-->>F: 400 "验证码错误或已过期"
-    end
-```
 
 - **随机算式**：`num1 op1 num2 op2 num3`，op ∈ {+, -, *}
 - **后端校验**：答案存储在 Redis，前端不知晓正确答案
@@ -323,11 +237,11 @@ sequenceDiagram
 
 ---
 
-## Contributing
+## 贡献指南
 
 欢迎所有形式的贡献！Star、Fork、Issue、PR 都是对项目的支持。
 
-### How to Contribute
+### 如何贡献
 
 1. **Fork** 本项目
 2. 创建特性分支：`git checkout -b feature/amazing-feature`
@@ -335,7 +249,7 @@ sequenceDiagram
 4. 推送分支：`git push origin feature/amazing-feature`
 5. 创建 **Pull Request**
 
-### Commit Convention
+### 提交规范
 
 本项目使用 [Conventional Commits](https://www.conventionalcommits.org/) 规范：
 
@@ -351,24 +265,24 @@ sequenceDiagram
 
 ---
 
-## Learning Path
+## 学习路线
 
 如果你正在学习高并发系统设计，建议按以下顺序阅读代码：
 
-1.  `cmd/main.go` — 了解系统启动流程和依赖注入
-2.  `config/` — 理解多环境配置管理
-3.  `model/` — 熟悉数据模型设计
-4.  `controller/seckill_controller.go` — 秒杀接口入口
-5.  `service/seckill_service.go` — 核心秒杀逻辑
-6.  `redis/redis.go` — Lua 原子脚本
-7.  `singleflight/` — 请求合并机制
-8.  `mq/` — RabbitMQ 延迟队列
-9.  `sentinel/` — 流量防护配置
+1. `cmd/main.go` — 了解系统启动流程和依赖注入
+2. `config/` — 理解多环境配置管理
+3. `model/` — 熟悉数据模型设计
+4. `controller/seckill_controller.go` — 秒杀接口入口
+5. `service/seckill_service.go` — 核心秒杀逻辑
+6. `redis/redis.go` — Lua 原子脚本
+7. `singleflight/` — 请求合并机制
+8. `mq/` — RabbitMQ 延迟队列
+9. `sentinel/` — 流量防护配置
 10. `detector/` — AI 异常检测
 
 ---
 
-## FAQ
+## 常见问题
 
 <details>
 <summary><b>为什么选择 Go 而不是 Java？</b></summary>
@@ -387,13 +301,13 @@ Go 原生支持高并发（goroutine），编译为单一二进制文件部署�
 
 ---
 
-## License
+## 许可证
 
 本项目采用 [MIT License](LICENSE) 开源，欢迎自由使用、修改和分发。
 
 ---
 
-## Acknowledgments
+## 致谢
 
 如果这个项目对你有帮助，请给个 ⭐ Star 支持一下！
 
