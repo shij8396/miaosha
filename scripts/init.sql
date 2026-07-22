@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS t_audit_log (
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作审计日志表';
 
--- [修复] 测试用户密码使用正确的 bcrypt 哈希值（$2a$10$... 对应密码 123456）
+-- 测试数据：密码为 test123（bcrypt 哈希），请在生产环境删除
 INSERT INTO t_user (username, password, nickname, role, status, created_at, updated_at) VALUES
 ('testuser', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '测试用户', 'user', 1, NOW(), NOW()),
 ('admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '管理员', 'admin', 1, NOW(), NOW());

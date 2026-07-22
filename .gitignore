@@ -58,3 +58,6 @@ frontend/dist/
 
 # ===== 文档 =====
 *.docx
+
+# ===== 一次性工具 =====
+genhash/

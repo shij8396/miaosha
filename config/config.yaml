@@ -34,7 +34,7 @@ mysql:
   #  - host: "127.0.0.1"
   #    port: 3307
   #    user: "root"
-  #    password: "miaosha_slave_2026"
+  #    password: "YOUR_SLAVE_PASSWORD"
   #    database: "miaosha"
   #    charset: "utf8mb4"
   #    max_idle_conns: 20

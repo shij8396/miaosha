@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/miaosha/config"
+	"github.com/miaosha/log"
 	"github.com/miaosha/utils"
 )
 
@@ -23,7 +24,9 @@ func SignMiddleware() gin.HandlerFunc {
 	cfg := config.GetConfig()
 	secret := cfg.Server.SignSecret
 	if secret == "" {
-		secret = "miaosha-sign-secret-2026"
+		// 签名密钥未配置，使用默认值（仅开发环境，生产环境必须通过配置或环境变量注入）
+		secret = "default-dev-sign-secret-change-in-production"
+		log.L().Warnw("签名密钥未配置，使用默认开发密钥，生产环境请务必修改", "file", "middleware/sign.go")
 	}
 
 	// 签名白名单：健康检查、Prometheus 指标、登录注册等不需要签名

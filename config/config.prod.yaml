@@ -6,8 +6,12 @@ server:
   port: 8080
   mode: "release"
   instance_id: ""
-  read_timeout: 30
-  write_timeout: 30
+  read_timeout: 5
+  write_timeout: 5
+  idle_timeout: 60
+  max_body_bytes: 1048576
+  sign_secret: "${MIAOSHA_SERVER_SIGN_SECRET}"
+  performance_mode: true
 
 jwt:
   secret: "${MIAOSHA_JWT_SECRET}"
