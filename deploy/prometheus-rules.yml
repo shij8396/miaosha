@@ -1,0 +1,93 @@
+# [修复] SLO 告警规则：定义秒杀系统核心用户旅程的服务等级目标
+# 可用性目标：99.9%（月度），P99 延迟目标：500ms
+
+groups:
+  - name: miaosha_slo
+    interval: 30s
+    rules:
+
+      # ===== 秒杀下单 SLO =====
+      # 错误预算计算：1 - 可用性目标 = 0.1%（月度错误预算）
+      # 燃烧率告警阈值：14.4x（2% 预算在 1 小时内消耗）、6x（5% 预算在 6 小时内消耗）
+
+      # 秒杀下单请求总数（5分钟窗口）
+      - record: job:seckill_requests_total:rate5m
+        expr: rate(miaosha_http_requests_total{path=~"/api/v1/seckill"}[5m])
+
+      # 秒杀下单成功数（5分钟窗口）
+      - record: job:seckill_success_total:rate5m
+        expr: rate(miaosha_seckill_success_total[5m])
+
+      # 秒杀下单可用性 SLI（5分钟窗口）
+      - record: sli:seckill_availability:ratio_rate5m
+        expr: |
+          rate(miaosha_seckill_success_total[5m])
+          /
+          (rate(miaosha_seckill_success_total[5m]) + rate(miaosha_seckill_fail_total[5m]))
+
+      # 秒杀下单 P99 延迟（5分钟窗口）
+      - record: sli:seckill_latency_p99:seconds_rate5m
+        expr: histogram_quantile(0.99,
+          rate(miaosha_http_request_duration_seconds_bucket{path="/api/v1/seckill"}[5m]))
+
+      # ===== 全局 API 可用性 SLI =====
+      - record: sli:api_availability:ratio_rate5m
+        expr: |
+          1 - (
+            rate(miaosha_http_errors_total[5m])
+            /
+            rate(miaosha_http_requests_total[5m])
+          )
+
+      # 错误预算燃烧率（秒杀下单）：当前消耗速率 vs 月度预算
+      - record: slo:seckill_error_budget_burn_rate
+        expr: |
+          (1 - sli:seckill_availability:ratio_rate5m)
+          /
+          (1 - 0.999) * 30 * 24 * 3600 / 300
+
+      # ===== 告警规则 =====
+
+      # 高燃烧率告警：错误预算消耗速度超过 14.4x（2% 月度预算在 1 小时内消耗）
+      - alert: SeckillHighErrorBurnRate
+        expr: slo:seckill_error_budget_burn_rate > 14.4
+        for: 5m
+        labels:
+          severity: critical
+          slo: seckill_availability
+        annotations:
+          summary: "秒杀下单错误预算燃烧率过高"
+          description: "秒杀下单错误预算燃烧率为 {{ $value | humanize }}x，月度错误预算可能在 1 小时内耗尽。请立即检查服务状态。"
+
+      # 中燃烧率告警：错误预算消耗速度超过 6x（5% 月度预算在 6 小时内消耗）
+      - alert: SeckillMediumErrorBurnRate
+        expr: slo:seckill_error_budget_burn_rate > 6
+        for: 30m
+        labels:
+          severity: warning
+          slo: seckill_availability
+        annotations:
+          summary: "秒杀下单错误预算燃烧率偏高"
+          description: "秒杀下单错误预算燃烧率为 {{ $value | humanize }}x，月度错误预算可能在 6 小时内耗尽。请关注服务状态。"
+
+      # P99 延迟超标告警
+      - alert: SeckillHighLatency
+        expr: sli:seckill_latency_p99:seconds_rate5m > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          slo: seckill_latency
+        annotations:
+          summary: "秒杀下单 P99 延迟超标"
+          description: "秒杀下单 P99 延迟为 {{ $value | humanize }}秒，超过 500ms 目标。请检查慢查询和资源使用情况。"
+
+      # 全局 API 可用性告警
+      - alert: APIHighErrorRate
+        expr: sli:api_availability:ratio_rate5m < 0.99
+        for: 5m
+        labels:
+          severity: critical
+          slo: api_availability
+        annotations:
+          summary: "API 整体错误率过高"
+          description: "API 可用性为 {{ $value | humanizePercentage }}，低于 99% 目标。请立即检查服务状态。"

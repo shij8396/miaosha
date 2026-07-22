@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>秒杀系统 - 企业级分布式高可用</title>
+    <style>
+      #loading { position:fixed;inset:0;background:#0a0a1a;display:flex;align-items:center;justify-content:center;z-index:9999;transition:opacity .5s }
+      .loader { width:48px;height:48px;border:3px solid rgba(233,69,96,.2);border-top-color:#e94560;border-radius:50%;animation:spin .8s linear infinite }
+      @keyframes spin { to { transform:rotate(360deg) } }
+    </style>
+  </head>
+  <body>
+    <div id="loading"><div class="loader"></div></div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const el = document.getElementById('loading')
+          el.style.opacity = '0'
+          setTimeout(() => el.remove(), 500)
+        }, 300)
+      })
+    </script>
+  </body>
+</html>

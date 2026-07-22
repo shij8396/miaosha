@@ -1,0 +1,164 @@
+# [修复] 敏感信息（密码/secret）可通过环境变量 MIAOSHA_ 前缀覆盖，例如 MIAOSHA_MYSQL_MASTER_PASSWORD
+# 本地开发专用配置，所有地址使用 127.0.0.1
+
+server:
+  name: "miaosha-server"
+  port: 8080
+  mode: "release"  # [优化] 生产模式，关闭 Gin debug 日志和路由检查，提升 15-20% 吞吐量
+  instance_id: ""
+  read_timeout: 5    # [优化] 缩短超时防慢客户端占用连接
+  write_timeout: 5   # [优化] 缩短超时防响应阻塞
+  idle_timeout: 60
+  max_body_bytes: 1048576
+  sign_secret: "YOUR_SIGN_SECRET"
+  performance_mode: true  # [优化] 压测模式：跳过 TraceID/RequestLog/CORS 中间件，减少请求开销
+
+jwt:
+  secret: "YOUR_JWT_SECRET"
+  expire_hours: 24
+  issuer: "miaosha-system"
+
+mysql:
+  master:
+    host: "127.0.0.1"
+    port: 3306
+    user: "root"
+    password: "YOUR_MYSQL_PASSWORD"
+    database: "miaosha"
+    charset: "utf8mb4"
+    max_idle_conns: 50
+    max_open_conns: 200
+    conn_max_lifetime: 3600
+  # 从库暂未配置复制，读写都用主库
+  #slaves:
+  #  - host: "127.0.0.1"
+  #    port: 3307
+  #    user: "root"
+  #    password: "miaosha_slave_2026"
+  #    database: "miaosha"
+  #    charset: "utf8mb4"
+  #    max_idle_conns: 20
+  #    max_open_conns: 100
+  #    conn_max_lifetime: 3600
+  order_table_shard_count: 16
+
+redis:
+  addrs:
+    - "127.0.0.1:6379"
+  password: "YOUR_REDIS_PASSWORD"
+  pool_size: 100
+  min_idle_conns: 20
+  dial_timeout: 5
+  read_timeout: 3
+  write_timeout: 3
+
+rabbitmq:
+  # [修复] 本地开发环境 vhost 使用默认 /，Docker 部署使用 /miaosha（见 config.docker.yaml）
+  urls:
+    - "amqp://admin:YOUR_MQ_PASSWORD@127.0.0.1:5672/"
+  vhost: "/"
+  heartbeat: 30  # [修复] 心跳间隔（秒），防止连接被 RabbitMQ 服务端关闭
+  exchange:
+    order: "miaosha.order.exchange"
+    dead_letter: "miaosha.dead.letter.exchange"
+  queue:
+    order: "miaosha.order.queue"
+    delay: "miaosha.delay.queue"
+    dead_letter: "miaosha.dead.letter.queue"
+  consumer:
+    concurrency: 10
+    prefetch: 50
+  delay_ttl_ms: 1800000
+  channel_pool_size: 20  # [P0-1] MQ Channel 连接池大小，替代全局 publishMu 串行锁
+
+kafka:
+  # [修复] 删除 127.0.0.1:9093，仅保留 127.0.0.1:9092（单节点 Kafka 只有一个 broker）
+  brokers:
+    - "127.0.0.1:9092"
+  topic: "miaosha-behavior-track"
+  producer:
+    acks: "all"
+    compression: "snappy"
+    max_message_bytes: 1048576
+    batch_size: 100
+    linger_ms: 10
+
+etcd:
+  # [修复] 删除 127.0.0.1:2380（peer 通信端口），仅保留 127.0.0.1:2379（客户端端口）
+  endpoints:
+    - "127.0.0.1:2379"
+  dial_timeout: 5
+  lease_ttl: 10
+  service_prefix: "/miaosha/services/"
+
+sentinel:
+  # [修复] Sentinel 在生产环境应开启，用于流量控制和熔断降级
+  enabled: true
+  dashboard: "127.0.0.1:8080"
+  app_name: "miaosha-server"
+  log_dir: "./logs/sentinel"
+  global_qps: 10000
+  user_qps: 10
+  seckill_qps: 5000
+  circuit_breaker:
+    max_rt_ms: 1000
+    max_rt_ratio: 0.5
+    min_request_amount: 10
+    stat_interval_ms: 1000
+    recovery_timeout_ms: 3000
+  hot_param:
+    threshold: 100
+    duration_sec: 1
+
+log:
+  level: "info"
+  format: "json"
+  output: "both"
+  file_path: "./logs/miaosha.log"
+  max_size: 100
+  max_backups: 30
+  max_age: 7
+  compress: true
+
+dingtalk:
+  enabled: true
+  # [修复] 钉钉 webhook 和 secret 建议从环境变量读取，避免硬编码敏感信息
+  # 可通过环境变量 MIAOSHA_DINGTALK_WEBHOOK_URL 和 MIAOSHA_DINGTALK_SECRET 覆盖
+  webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN"
+  secret: "YOUR_SECRET"
+  alert:
+    error_rate_threshold: 0.05
+    qps_threshold: 8000
+    mq_backlog_threshold: 1000
+    circuit_breaker_trigger: true
+
+reconciler:
+  enabled: true
+  interval_sec: 300
+  batch_size: 100
+
+prometheus:
+  enabled: true
+  metrics_path: "/metrics"
+  metrics_port: 9090
+
+# [修复] Jaeger 全链路追踪配置
+tracing:
+  enabled: false
+  endpoint: "localhost:4318"
+
+# [修复] CORS 跨域安全配置 - 仅允许白名单域名携带凭据
+cors:
+  allowed_origins:
+    - "http://localhost:5173"
+    - "http://localhost:3000"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowed_headers:
+    - "Content-Type"
+    - "Authorization"
+    - "X-Trace-ID"

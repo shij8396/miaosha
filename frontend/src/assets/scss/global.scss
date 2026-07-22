@@ -1,0 +1,134 @@
+// 全局样式 - 赛博朋克科技风
+// [修复] 高度链：html → body → #app → .app-shell → .layout-container → .main-content
+// 确保每一层都使用百分比高度，最终由 main-content 的 overflow-y:auto 提供滚动
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;   // 禁止 body 级别滚动，滚动由内部容器处理
+}
+
+body {
+  /* [修复] 任务8: 全局字体设置为中英文混合字体栈，确保中文不乱码 */
+  font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  background: #0a0a1a;
+  color: #e0e0e0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* [修复] 任务8: 全局通配字体设置，确保所有元素中文不乱码 */
+* { font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif; }
+
+// [修复] Vue 挂载点必须继承高度，否则整个布局链断裂
+#app {
+  height: 100%;
+  overflow: hidden;
+}
+
+// 滚动条
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(233,69,96,.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(233,69,96,.5); }
+
+// 玻璃拟态
+.glass-card {
+  background: rgba(255,255,255,.04) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 12px !important;
+}
+
+// 渐变文字
+.gradient-text {
+  background: linear-gradient(135deg, #e94560, #ff6b6b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+// 动画
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(233,69,96,.3); }
+  50% { box-shadow: 0 0 20px rgba(233,69,96,.6); }
+}
+.fade-in-up { animation: fadeInUp .6s ease-out; }
+.pulse { animation: pulse 2s infinite; }
+.glow { animation: glow 2s infinite; }
+
+// [修复] 页面容器：去掉固定 height:100%，改为 min-height 配合父容器滚动
+// 原 height:100% 在父容器未设置确定高度时失效，导致内容溢出无法滚动
+.page-container {
+  padding: 24px;
+  min-height: 100%;  // 内容不足时撑满，超出时自然扩展
+  overflow-y: auto;   // 自身也可滚动，双重保障
+}
+
+// 统计卡片
+.stat-card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all .3s;
+  &:hover {
+    border-color: rgba(233,69,96,.3);
+    transform: translateY(-2px);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// [修复] 任务1: 全局CSS动画和视觉升级
+// ──────────────────────────────────────────────────────────────
+
+// [修复] 卡片悬浮上浮动画
+.glass-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.glass-card:hover { transform: translateY(-4px); border-color: rgba(233,69,96,.4) !important; box-shadow: 0 8px 32px rgba(233,69,96,.15); }
+
+// [修复] 按钮流光波纹效果
+@keyframes ripple { 0% { box-shadow: 0 0 0 0 rgba(233,69,96,.4); } 100% { box-shadow: 0 0 0 12px rgba(233,69,96,0); } }
+.el-button--danger { position: relative; overflow: hidden; }
+.el-button--danger:not(.is-disabled):active::after { content: ''; position: absolute; inset: 0; animation: ripple .6s ease-out; }
+
+// [修复] 数字滚动动画
+@keyframes countUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.count-up { animation: countUp .6s ease-out; }
+
+// [修复] 页面淡入入场
+@keyframes pageFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.page-container { animation: pageFadeIn .4s ease-out; }
+
+// [修复] 霓虹渐变高亮 - 强化数据大屏配色
+@keyframes neonGlow {
+  0%, 100% { text-shadow: 0 0 10px rgba(233,69,96,.5), 0 0 20px rgba(233,69,96,.3); }
+  50% { text-shadow: 0 0 20px rgba(233,69,96,.8), 0 0 40px rgba(233,69,96,.5), 0 0 60px rgba(233,69,96,.3); }
+}
+.neon-text { animation: neonGlow 2s ease-in-out infinite; }
+
+// Element Plus 暗色主题覆盖
+.el-menu { background: transparent !important; border-right: none !important }
+.el-menu-item.is-active { background: rgba(233,69,96,.12) !important; color: #e94560 !important }
+.el-table { background: transparent !important; --el-table-bg-color: transparent; --el-table-tr-bg-color: transparent }
+.el-table th.el-table__cell { background: rgba(255,255,255,.03) !important; color: #999 !important; border-bottom: 1px solid rgba(255,255,255,.06) !important }
+.el-table td.el-table__cell { border-bottom: 1px solid rgba(255,255,255,.04) !important }
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell { background: rgba(255,255,255,.02) !important }
+.el-dialog { background: rgba(20,20,40,.98) !important; backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.06); border-radius: 12px }
+.el-dialog__title { color: #e0e0e0 }
+.el-message { background: rgba(20,20,40,.95) !important; border: 1px solid rgba(255,255,255,.06) !important }
+.el-empty__description { color: #666 !important }
+.el-progress-bar__outer { background: rgba(255,255,255,.06) !important }
+.el-tag { border: none !important }
+
+// [修复] 页面过渡动画
+.page-container-enter-active,
+.page-container-leave-active { transition: opacity .3s ease }
+.page-container-enter-from,
+.page-container-leave-to { opacity: 0 }

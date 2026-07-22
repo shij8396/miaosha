@@ -1,0 +1,604 @@
+basePath: /api/v1
+definitions:
+  model.CreateProductRequest:
+    properties:
+      description:
+        type: string
+      end_time:
+        type: string
+      image_url:
+        type: string
+      limit_per_user:
+        type: integer
+      name:
+        maxLength: 256
+        type: string
+      price:
+        type: number
+      seckill_price:
+        type: number
+      start_time:
+        type: string
+      total_stock:
+        type: integer
+    required:
+    - end_time
+    - name
+    - price
+    - seckill_price
+    - start_time
+    - total_stock
+    type: object
+  model.LoginRequest:
+    properties:
+      password:
+        maxLength: 64
+        minLength: 6
+        type: string
+      username:
+        maxLength: 64
+        minLength: 3
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  model.LoginResponse:
+    properties:
+      nickname:
+        type: string
+      role:
+        type: string
+      token:
+        type: string
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  model.Product:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      end_time:
+        type: string
+      id:
+        type: integer
+      image_url:
+        type: string
+      limit_per_user:
+        type: integer
+      name:
+        type: string
+      pay_timeout:
+        description: '[修复] 活动配置自定义支付超时'
+        type: integer
+      price:
+        type: number
+      remain_stock:
+        type: integer
+      seckill_price:
+        type: number
+      start_time:
+        type: string
+      status:
+        type: integer
+      total_stock:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  model.RegisterRequest:
+    properties:
+      nickname:
+        maxLength: 128
+        type: string
+      password:
+        maxLength: 64
+        minLength: 6
+        type: string
+      phone:
+        maxLength: 20
+        type: string
+      username:
+        maxLength: 64
+        minLength: 3
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  model.SeckillRequest:
+    properties:
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
+  model.SeckillResponse:
+    properties:
+      message:
+        type: string
+      order_no:
+        type: string
+      status:
+        type: string
+    type: object
+  model.UpdateUserRoleRequest:
+    properties:
+      role:
+        enum:
+        - super_admin
+        - operator
+        - monitor_readonly
+        - risk_control
+        - admin
+        - user
+        type: string
+      user_id:
+        type: integer
+    required:
+    - role
+    - user_id
+    type: object
+  model.UserListResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      nickname:
+        type: string
+      phone:
+        type: string
+      role:
+        type: string
+      status:
+        type: integer
+      username:
+        type: string
+    type: object
+  utils.Response:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+      trace_id:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@miaosha.com
+    name: 秒杀系统团队
+    url: http://www.miaosha.com/support
+  description: 基于 Go + Gin 的企业级高并发秒杀系统，支持 Redis Cluster 分布式锁、RabbitMQ 延迟队列、Kafka 行为追踪、Sentinel
+    流量防护、Jaeger 全链路追踪
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: 企业级分布式秒杀系统 API
+  version: "1.0"
+paths:
+  /api/v1/product:
+    post:
+      consumes:
+      - application/json
+      description: 创建新的秒杀商品，自动预热 Redis 库存
+      parameters:
+      - description: 商品创建请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateProductRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Product'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      security:
+      - BearerAuth: []
+      summary: 创建商品
+      tags:
+      - 商品模块
+  /api/v1/product/{id}:
+    get:
+      consumes:
+      - application/json
+      description: 根据商品 ID 查询商品详细信息
+      parameters:
+      - description: 商品 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.Product'
+              type: object
+        "400":
+          description: 商品ID格式错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "404":
+          description: 商品不存在
+          schema:
+            $ref: '#/definitions/utils.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取商品详情
+      tags:
+      - 商品模块
+  /api/v1/product/active:
+    get:
+      consumes:
+      - application/json
+      description: 查询当前时间范围内状态为上架且库存大于 0 的秒杀商品
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.Product'
+                  type: array
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取正在秒杀的商品
+      tags:
+      - 商品模块
+  /api/v1/product/list:
+    get:
+      consumes:
+      - application/json
+      description: 分页查询所有商品，支持按状态筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  properties:
+                    list:
+                      items:
+                        $ref: '#/definitions/model.Product'
+                      type: array
+                    page:
+                      type: integer
+                    page_size:
+                      type: integer
+                    total:
+                      type: integer
+                  type: object
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取商品列表
+      tags:
+      - 商品模块
+  /api/v1/seckill:
+    post:
+      consumes:
+      - application/json
+      description: 参与秒杀活动，经过 Sentinel 限流、热点参数防护、Redis 库存扣减、MQ 异步下单，管理员账号自动跳过限流
+      parameters:
+      - description: 秒杀请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.SeckillRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 秒杀成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.SeckillResponse'
+              type: object
+        "400":
+          description: 库存不足/商品已下架/不在活动时间
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "429":
+          description: 当前抢购人数过多，请稍后重试
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "503":
+          description: Redis/MQ服务异常
+          schema:
+            $ref: '#/definitions/utils.Response'
+      security:
+      - BearerAuth: []
+      summary: 秒杀下单
+      tags:
+      - 秒杀模块
+  /api/v1/user/info:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前登录用户的详细信息，包括角色、状态等
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  properties:
+                    created_at:
+                      type: string
+                    nickname:
+                      type: string
+                    phone:
+                      type: string
+                    role:
+                      type: string
+                    status:
+                      type: integer
+                    user_id:
+                      type: integer
+                    username:
+                      type: string
+                  type: object
+              type: object
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/utils.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取当前用户信息
+      tags:
+      - 用户模块
+  /api/v1/user/list:
+    get:
+      consumes:
+      - application/json
+      description: 管理员分页查询所有用户，支持按角色筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  properties:
+                    list:
+                      items:
+                        $ref: '#/definitions/model.UserListResponse'
+                      type: array
+                    page:
+                      type: integer
+                    page_size:
+                      type: integer
+                    total:
+                      type: integer
+                  type: object
+              type: object
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/utils.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取用户列表
+      tags:
+      - 用户模块
+  /api/v1/user/login:
+    post:
+      consumes:
+      - application/json
+      description: 使用用户名和密码登录，返回 JWT Token，有效期 24 小时
+      parameters:
+      - description: 登录请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.LoginResponse'
+              type: object
+        "400":
+          description: 用户名或密码错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "429":
+          description: 登录尝试过于频繁
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 用户登录
+      tags:
+      - 用户模块
+  /api/v1/user/password:
+    put:
+      consumes:
+      - application/json
+      description: 验证旧密码后修改为新密码，修改成功后需重新登录
+      parameters:
+      - description: 密码修改请求
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            new_password:
+              type: string
+            old_password:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 密码修改成功
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "400":
+          description: 旧密码错误或参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/utils.Response'
+      security:
+      - BearerAuth: []
+      summary: 修改密码
+      tags:
+      - 用户模块
+  /api/v1/user/register:
+    post:
+      consumes:
+      - application/json
+      description: 创建新用户账号，密码使用 bcrypt 加密存储
+      parameters:
+      - description: 注册请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 注册成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  properties:
+                    user_id:
+                      type: integer
+                    username:
+                      type: string
+                  type: object
+              type: object
+        "400":
+          description: 参数错误或用户名已存在
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 用户注册
+      tags:
+      - 用户模块
+  /api/v1/user/role:
+    put:
+      consumes:
+      - application/json
+      description: 管理员修改用户角色（super_admin/operator/monitor_readonly/risk_control/admin/user）
+      parameters:
+      - description: 角色更新请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.UpdateUserRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 角色更新成功
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/utils.Response'
+      security:
+      - BearerAuth: []
+      summary: 更新用户角色
+      tags:
+      - 用户模块
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT Token，格式: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -1,0 +1,235 @@
+# [修复] 修复容器编排配置：添加健康检查、Kafka 广播监听、服务重启策略、移除未使用卷等
+version: "3.8"
+services:
+  mysql-master:
+    image: mysql:8.0
+    container_name: miaosha-mysql-master
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: miaosha_master_2026
+      MYSQL_DATABASE: miaosha
+    ports: ["3308:3306"]
+    volumes: ["./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql", "mysql-master-data:/var/lib/mysql"]
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4
+    # [修复] 为 MySQL 主库添加健康检查，确保数据库就绪后才启动依赖服务
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [miaosha-net]
+
+  mysql-slave:
+    image: mysql:8.0
+    container_name: miaosha-mysql-slave
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: miaosha_slave_2026
+      MYSQL_DATABASE: miaosha
+    ports: ["3307:3306"]
+    volumes: ["./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql", "mysql-slave-data:/var/lib/mysql"]
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4
+    # [修复] 为 MySQL 从库添加健康检查
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [miaosha-net]
+
+  redis-node1:
+    image: redis:7-alpine
+    container_name: miaosha-redis-node1
+    restart: unless-stopped
+    command: redis-server --port 6379 --appendonly yes --requirepass miaosha_redis_2026
+    ports: ["6379:6379"]
+    volumes: ["redis-node1-data:/data"]
+    # [修复] 为 Redis 添加健康检查，确保 Redis 能响应 PING
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "miaosha_redis_2026", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [miaosha-net]
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: miaosha-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: miaosha_mq_2026
+      RABBITMQ_DEFAULT_VHOST: /miaosha
+    ports: ["5672:5672", "15672:15672"]
+    volumes: ["rabbitmq-data:/var/lib/rabbitmq"]
+    # [修复] 为 RabbitMQ 添加健康检查，确保管理 API 可访问
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [miaosha-net]
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.21
+    container_name: miaosha-etcd
+    restart: unless-stopped
+    # [修复] etcd 数据卷挂载改为 /var/lib/etcd，并添加 --data-dir 参数
+    command: etcd --advertise-client-urls=http://0.0.0.0:2379 --listen-client-urls=http://0.0.0.0:2379 --data-dir=/var/lib/etcd
+    ports: ["2379:2379", "2380:2380"]
+    volumes: ["etcd-data:/var/lib/etcd"]
+    # [修复] 为 Etcd 添加健康检查
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://localhost:2379"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [miaosha-net]
+
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: miaosha-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093
+      # [修复] 添加 KAFKA_ADVERTISED_LISTENERS，确保容器内外均可访问 Kafka
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    ports: ["9092:9092"]
+    # [修复] 为 Kafka 添加健康检查
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [miaosha-net]
+
+  nginx:
+    image: nginx:alpine
+    container_name: miaosha-nginx
+    restart: unless-stopped
+    ports: ["80:80"]
+    volumes: ["./deploy/nginx.conf:/etc/nginx/nginx.conf:ro"]
+    depends_on: [miaosha-server]
+    networks: [miaosha-net]
+
+  miaosha-server:
+    build: {context: ., dockerfile: Dockerfile}
+    # [修复] 去掉固定 container_name，改为注释说明，避免多实例部署时名称冲突
+    # container_name: miaosha-server-1
+    # [修复] 多实例部署：去掉固定端口映射，由 Nginx 统一代理入口流量
+    # 启动多实例：docker compose up --scale miaosha-server=3 -d
+    # 单实例调试时可临时添加 ports: ["8080:8080"]
+    restart: unless-stopped
+    # [修复] 仅暴露端口到 Docker 内部网络，不映射到宿主机（Nginx 代理所有流量）
+    expose: ["8080", "9090"]
+    environment:
+      MIAOSHA_SERVER_PORT: "8080"
+      # [修复] 密钥脱敏：通过环境变量注入敏感配置，避免 config.yaml 明文存储
+      MIAOSHA_MYSQL_MASTER_PASSWORD: "miaosha_master_2026"
+      MIAOSHA_MYSQL_SLAVES_0_PASSWORD: "miaosha_slave_2026"
+      MIAOSHA_REDIS_PASSWORD: "miaosha_redis_2026"
+      MIAOSHA_RABBITMQ_URLS_0: "amqp://admin:miaosha_mq_2026@rabbitmq:5672/miaosha"
+      MIAOSHA_JWT_SECRET: "miaosha-jwt-secret-key-2026-enterprise-production"
+      MIAOSHA_SERVER_SIGN_SECRET: "miaosha-sign-secret-2026"
+    depends_on:
+      mysql-master: {condition: service_healthy}
+      mysql-slave: {condition: service_healthy}
+      redis-node1: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+      etcd: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+    volumes: ["./logs:/app/logs", "./config/config.docker.yaml:/app/config/config.yaml"]
+    # [修复] 容器资源限制：防止 OOM 或 CPU 耗尽影响宿主机
+    deploy:
+      resources:
+        limits:
+          cpus: '2'      # 最多使用 2 核 CPU
+          memory: 512M   # 最多使用 512MB 内存
+        reservations:
+          cpus: '0.5'    # 最低保证 0.5 核 CPU
+          memory: 256M   # 最低保证 256MB 内存
+    # [修复] 为应用服务添加健康检查，K8s/Docker Swarm 用于判断服务就绪状态
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health?type=readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [miaosha-net]
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: miaosha-prometheus
+    restart: unless-stopped
+    ports: ["9091:9090"]
+    volumes:
+      - "./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "./deploy/prometheus-rules.yml:/etc/prometheus/rules/slo-rules.yml:ro"
+      - "prometheus-data:/prometheus"
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.path=/prometheus']
+    networks: [miaosha-net]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: miaosha-grafana
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    environment: [GF_SECURITY_ADMIN_PASSWORD=miaosha_admin_2026]
+    volumes: ["grafana-data:/var/lib/grafana", "./deploy/grafana/provisioning:/etc/grafana/provisioning:ro"]
+    networks: [miaosha-net]
+
+  # [修复] 添加 Alertmanager 服务，用于告警通知管理
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: miaosha-alertmanager
+    restart: unless-stopped
+    ports: ["9093:9093"]
+    volumes: ["./deploy/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    command: ['--config.file=/etc/alertmanager/alertmanager.yml']
+    networks: [miaosha-net]
+
+  # [修复] 添加 Elasticsearch 服务（简化版），用于日志收集和搜索
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
+    container_name: miaosha-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ports: ["9200:9200"]
+    volumes: ["elasticsearch-data:/usr/share/elasticsearch/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [miaosha-net]
+
+volumes:
+  mysql-master-data:
+  mysql-slave-data:
+  redis-node1-data:
+  # [修复] 删除未使用的 redis-node2-data、redis-node3-data 卷声明
+  rabbitmq-data:
+  etcd-data:
+  kafka-data:
+  prometheus-data:
+  grafana-data:
+  # [修复] 添加 elasticsearch 数据卷
+  elasticsearch-data:
+
+networks:
+  miaosha-net: {driver: bridge}

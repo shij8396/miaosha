@@ -1,0 +1,17 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths: ['/app/logs/miaosha.log']
+    fields: {service: miaosha-server, log_type: application}
+    json.keys_under_root: true
+    json.add_error_key: true
+  - type: log
+    enabled: true
+    paths: ['/var/log/nginx/access.log']
+    fields: {service: nginx, log_type: access}
+output.elasticsearch:
+  hosts: ['elasticsearch:9200']
+  index: 'miaosha-logs-%{+yyyy.MM.dd}'
+processors:
+  - add_host_metadata: ~
+  - drop_fields: {fields: ['agent', 'ecs', 'input', 'log']}

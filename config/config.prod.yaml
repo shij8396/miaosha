@@ -1,0 +1,120 @@
+# [修复] 生产环境配置 - 开启 release 模式，关闭 debug 日志，启用所有高可用组件
+# 开发环境使用 config.yaml，生产环境通过环境变量或启动参数指定此文件
+
+server:
+  name: "miaosha-server"
+  port: 8080
+  mode: "release"
+  instance_id: ""
+  read_timeout: 30
+  write_timeout: 30
+
+jwt:
+  secret: "${MIAOSHA_JWT_SECRET}"
+  expire_hours: 24
+  issuer: "miaosha-system"
+
+mysql:
+  master:
+    host: "${MIAOSHA_MYSQL_HOST}"
+    port: 3306
+    user: "${MIAOSHA_MYSQL_USER}"
+    password: "${MIAOSHA_MYSQL_PASSWORD}"
+    database: "miaosha"
+    charset: "utf8mb4"
+    max_idle_conns: 50
+    max_open_conns: 200
+    conn_max_lifetime: 3600
+  order_table_shard_count: 16
+
+redis:
+  addrs:
+    - "${MIAOSHA_REDIS_HOST}:6379"
+  password: "${MIAOSHA_REDIS_PASSWORD}"
+  pool_size: 200
+  min_idle_conns: 50
+  dial_timeout: 5
+  read_timeout: 3
+  write_timeout: 3
+
+rabbitmq:
+  urls:
+    - "amqp://${MIAOSHA_MQ_USER}:${MIAOSHA_MQ_PASSWORD}@${MIAOSHA_MQ_HOST}:5672/"
+  vhost: "/miaosha"
+  exchange:
+    order: "miaosha.order.exchange"
+    dead_letter: "miaosha.dead.letter.exchange"
+  queue:
+    order: "miaosha.order.queue"
+    delay: "miaosha.delay.queue"
+    dead_letter: "miaosha.dead.letter.queue"
+  consumer:
+    concurrency: 20
+    prefetch: 100
+  delay_ttl_ms: 1800000
+
+kafka:
+  brokers:
+    - "${MIAOSHA_KAFKA_HOST}:9092"
+  topic: "miaosha-behavior-track"
+  producer:
+    acks: "all"
+    compression: "snappy"
+    max_message_bytes: 1048576
+    batch_size: 100
+    linger_ms: 10
+
+etcd:
+  endpoints:
+    - "${MIAOSHA_ETCD_HOST}:2379"
+  dial_timeout: 5
+  lease_ttl: 10
+  service_prefix: "/miaosha/services/"
+
+sentinel:
+  enabled: true
+  dashboard: "${MIAOSHA_SENTINEL_HOST}:8080"
+  app_name: "miaosha-server"
+  log_dir: "./logs/sentinel"
+  global_qps: 10000
+  user_qps: 10
+  seckill_qps: 5000
+  circuit_breaker:
+    max_rt_ms: 1000
+    max_rt_ratio: 0.5
+    min_request_amount: 10
+    stat_interval_ms: 1000
+    recovery_timeout_ms: 3000
+  hot_param:
+    threshold: 100
+    duration_sec: 1
+
+log:
+  level: "info"
+  format: "json"
+  output: "file"
+  file_path: "/var/log/miaosha/miaosha.log"
+  max_size: 500
+  max_backups: 30
+  max_age: 30
+  compress: true
+
+dingtalk:
+  enabled: true
+  webhook_url: "${MIAOSHA_DINGTALK_WEBHOOK_URL}"
+  secret: "${MIAOSHA_DINGTALK_SECRET}"
+  alert:
+    error_rate_threshold: 0.05
+    qps_threshold: 8000
+    mq_backlog_threshold: 1000
+    circuit_breaker_trigger: true
+
+reconciler:
+  enabled: true
+  interval_sec: 300
+  batch_size: 100
+
+prometheus:
+  enabled: true
+  metrics_path: "/metrics"
+  metrics_port: 9090

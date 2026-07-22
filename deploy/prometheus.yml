@@ -1,0 +1,35 @@
+# [修复] Prometheus 配置：支持多实例 DNS 服务发现 + SLO 告警规则
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# [修复] 加载 SLO 告警规则文件
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  # [修复] miaosha-server 多实例抓取：使用 DNS SRV 记录自动发现所有实例
+  # 当 docker compose --scale miaosha-server=3 时，Docker DNS 返回所有实例 IP
+  - job_name: 'miaosha-server'
+    metrics_path: '/metrics'
+    dns_sd_configs:
+      - names: ['miaosha-server']
+        type: 'A'
+        port: 9090
+    # [修复] 多实例标签：instance 标签显示容器 hostname，便于区分不同实例
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        target_label: service
+        replacement: 'miaosha-server'
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.+):\d+'
+        replacement: '${1}'
+  # [修复] Prometheus self-scrape target 改为 localhost:9090
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+  # [修复] 添加 Alertmanager scrape 配置
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']

@@ -1,0 +1,22 @@
+{
+  "title": "秒杀系统监控面板",
+  "uid": "miaosha-dashboard",
+  "schemaVersion": 27,
+  "panels": [
+    {"title": "QPS实时监控", "type": "graph", "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}, "targets": [{"expr": "rate(miaosha_http_requests_total[1m])", "legendFormat": "{{method}} {{path}}"}]},
+    {"title": "接口耗时分布", "type": "heatmap", "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}, "targets": [{"expr": "rate(miaosha_http_request_duration_seconds_bucket[1m])"}]},
+    {"title": "秒杀成功率", "type": "stat", "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4}, "targets": [{"expr": "rate(miaosha_seckill_success_total[1m])/(rate(miaosha_seckill_success_total[1m])+rate(miaosha_seckill_fail_total[1m]))*100"}]},
+    {"title": "Sentinel限流次数", "type": "graph", "gridPos": {"x": 6, "y": 8, "w": 9, "h": 4}, "targets": [{"expr": "rate(miaosha_sentinel_reject_total[1m])", "legendFormat": "限流拒绝"}]},
+    {"title": "Sentinel熔断次数", "type": "graph", "gridPos": {"x": 15, "y": 8, "w": 9, "h": 4}, "targets": [{"expr": "rate(miaosha_sentinel_circuit_break_total[1m])", "legendFormat": "熔断触发"}]},
+    {"title": "Redis库存余量", "type": "gauge", "gridPos": {"x": 0, "y": 12, "w": 8, "h": 4}, "targets": [{"expr": "miaosha_redis_stock_remaining", "legendFormat": "商品{{product_id}}"}]},
+    {"title": "MQ堆积量", "type": "graph", "gridPos": {"x": 8, "y": 12, "w": 8, "h": 4}, "targets": [{"expr": "miaosha_mq_backlog_count", "legendFormat": "堆积量"}]},
+    {"title": "接口错误率", "type": "graph", "gridPos": {"x": 16, "y": 12, "w": 8, "h": 4}, "targets": [{"expr": "rate(miaosha_http_errors_total[1m])/rate(miaosha_http_requests_total[1m])*100"}]},
+
+    {"title": "秒杀下单可用性 SLI (目标 99.9%)", "type": "stat", "gridPos": {"x": 0, "y": 16, "w": 8, "h": 4}, "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"steps": [{"value": 0.999, "color": "green"}, {"value": 0.99, "color": "orange"}, {"value": 0, "color": "red"}]}}}, "targets": [{"expr": "sli:seckill_availability:ratio_rate5m", "legendFormat": "秒杀可用性"}]},
+    {"title": "秒杀下单 P99 延迟 (目标 500ms)", "type": "stat", "gridPos": {"x": 8, "y": 16, "w": 8, "h": 4}, "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"steps": [{"value": 0.5, "color": "green"}, {"value": 1, "color": "orange"}, {"value": 1000, "color": "red"}]}}}, "targets": [{"expr": "sli:seckill_latency_p99:seconds_rate5m", "legendFormat": "P99延迟"}]},
+    {"title": "API 整体可用性 SLI (目标 99.5%)", "type": "stat", "gridPos": {"x": 16, "y": 16, "w": 8, "h": 4}, "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"steps": [{"value": 0.995, "color": "green"}, {"value": 0.99, "color": "orange"}, {"value": 0, "color": "red"}]}}}, "targets": [{"expr": "sli:api_availability:ratio_rate5m", "legendFormat": "API可用性"}]},
+
+    {"title": "错误预算燃烧率 (1x = 正常消耗)", "type": "gauge", "gridPos": {"x": 0, "y": 20, "w": 12, "h": 6}, "fieldConfig": {"defaults": {"unit": "none", "max": 20, "thresholds": {"steps": [{"value": 1, "color": "green"}, {"value": 6, "color": "orange"}, {"value": 14.4, "color": "red"}]}}}, "targets": [{"expr": "slo:seckill_error_budget_burn_rate", "legendFormat": "燃烧率"}]},
+    {"title": "慢接口 TOP 5 (P99)", "type": "table", "gridPos": {"x": 12, "y": 20, "w": 12, "h": 6}, "targets": [{"expr": "topk(5, histogram_quantile(0.99, rate(miaosha_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{path}}", "format": "table"}]}
+  ]
+}

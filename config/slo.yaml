@@ -1,0 +1,56 @@
+# [修复] SLO 配置：定义秒杀系统核心用户旅程的服务等级目标（Service Level Objectives）
+# 本文件用于文档记录和自动化检查，实际告警规则见 deploy/prometheus-rules.yml
+
+slo_definitions:
+  # 秒杀下单 — 核心业务旅程
+  - name: "seckill_availability"
+    display_name: "秒杀下单可用性"
+    description: "用户成功提交秒杀订单的比例"
+    target: 99.9
+    window: "30d"
+    sli:
+      metric: "sli:seckill_availability:ratio_rate5m"
+      formula: "秒杀成功数 / (秒杀成功数 + 秒杀失败数)"
+    error_budget:
+      monthly_budget_minutes: 43.8  # 30天 * 24小时 * 60分钟 * 0.1%
+      burn_rate_alert:
+        high: 14.4  # 2% 预算在 1 小时内消耗
+        medium: 6.0 # 5% 预算在 6 小时内消耗
+
+  - name: "seckill_latency"
+    display_name: "秒杀下单 P99 延迟"
+    description: "秒杀接口 99% 的请求在目标时间内完成"
+    target: 500  # 单位：毫秒
+    window: "30d"
+    sli:
+      metric: "sli:seckill_latency_p99:seconds_rate5m"
+      formula: "histogram_quantile(0.99, rate(duration_bucket[5m]))"
+
+  # 全局 API 可用性 — 整体服务水平
+  - name: "api_availability"
+    display_name: "API 整体可用性"
+    description: "所有 API 接口的总体可用性"
+    target: 99.5
+    window: "30d"
+    sli:
+      metric: "sli:api_availability:ratio_rate5m"
+      formula: "1 - (错误请求数 / 总请求数)"
+
+  # 健康检查 — 基础可用性
+  - name: "health_check"
+    display_name: "服务健康检查"
+    description: "服务 Readiness 探针成功率"
+    target: 99.99
+    window: "30d"
+    sli:
+      metric: "probe_success"
+      formula: "健康检查成功次数 / 总检查次数"
+
+# 错误预算策略
+error_budget_policy:
+  # 当月度错误预算消耗超过 50% 时，冻结新功能发布
+  freeze_release_threshold: 0.5
+  # 当月度错误预算消耗超过 80% 时，所有变更必须经过 SRE 审批
+  sre_approval_threshold: 0.8
+  # 当月度错误预算耗尽时，暂停所有非紧急变更，全力修复可靠性问题
+  exhausted_action: "暂停所有非紧急变更，修复可靠性问题"

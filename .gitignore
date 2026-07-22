@@ -1,0 +1,60 @@
+# ===== 二进制文件 =====
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+miaosha-server
+server
+stress_test
+limit_test
+
+# ===== 测试覆盖率 =====
+*.out
+*.test
+coverage.html
+
+# ===== 依赖 =====
+vendor/
+
+# ===== Go 缓存 =====
+.gocache/
+.gomodcache/
+.modcache/
+
+# ===== 日志 =====
+logs/
+*.log
+
+# ===== 环境变量 / 密钥 =====
+.env
+*.env.local
+*.env.production
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== 临时文件 =====
+tmp/
+temp/
+*.tmp
+
+# ===== 上传目录（用户上传的文件） =====
+uploads/*
+
+# ===== Docker =====
+docker-compose.override.yml
+
+# ===== 前端构建产物 =====
+frontend/dist/
+
+# ===== 文档 =====
+*.docx

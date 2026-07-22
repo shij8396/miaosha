@@ -1,0 +1,28 @@
+// 暗黑主题（默认）
+:root {
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #12122a;
+  --bg-card: rgba(255,255,255,.04);
+  --border-color: rgba(255,255,255,.08);
+  --text-primary: #e0e0e0;
+  --text-secondary: #999;
+  --accent-color: #e94560;
+  --accent-hover: #ff6b6b;
+  --success-color: #67c23a;
+  --warning-color: #e6a23c;
+  --danger-color: #e94560;
+  --header-bg: #12122a;
+}
+
+// 亮色主题
+[data-theme="light"] {
+  --bg-primary: #f5f7fa;
+  --bg-secondary: #fff;
+  --bg-card: rgba(0,0,0,.02);
+  --border-color: rgba(0,0,0,.08);
+  --text-primary: #303133;
+  --text-secondary: #909399;
+  --accent-color: #e94560;
+  --accent-hover: #ff6b6b;
+  --header-bg: #fff;
+}
