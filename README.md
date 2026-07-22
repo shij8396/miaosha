@@ -15,10 +15,6 @@
   <img src="https://img.shields.io/github/forks/shij8396/miaosha?style=flat-square" alt="Forks">
 </p>
 
-<p align="center">
-  <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=A%20futuristic%20dark-theme%20dashboard%20for%20a%20high-concurrency%20flash%20sale%20system%2C%20showing%20real-time%20charts%20with%20purple%20and%20cyan%20neon%20accents%2C%20professional%20enterprise%20monitoring%20UI%20with%20multiple%20data%20panels&image_size=landscape_16_9" width="900" alt="Dashboard">
-</p>
-
 ---
 
 ##  项目亮点
