@@ -30,10 +30,24 @@
           <div class="limit-tip" v-if="p.remain_stock > 0">
             每人限购 {{ p.limit_per_user || 1 }} 件
           </div>
-          <!-- [修复] 任务4: 秒杀前验证码校验 -->
+          <!-- [创新] 秒杀前安全验证：数学验证码 + 秒杀地址隐藏 -->
           <div class="captcha-row" v-if="p.remain_stock > 0 && !isLimitReached(p)">
             <span class="captcha-label">安全验证</span>
-            <CaptchaInput ref="el => captchaRefs[p.id] = el" />
+            <div class="math-captcha-wrap">
+              <span class="math-expr" @click="refreshCaptcha(p.id)" title="点击刷新验证码">
+                {{ captchaData[p.id]?.expression || '点击获取' }}
+              </span>
+              <el-input
+                v-model="captchaInputs[p.id]"
+                placeholder="输入结果"
+                maxlength="4"
+                class="captcha-input-field"
+                @keyup.enter="doSeckill(p)"
+              />
+              <el-button size="small" text @click="refreshCaptcha(p.id)" :loading="captchaLoading[p.id]">
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+            </div>
           </div>
           <el-button type="danger" size="large" style="width:100%;margin-top:12px" @click="doSeckill(p)" :disabled="isSeckillDisabled(p)" :loading="seckilling === p.id">
             {{ getSeckillButtonText(p) }}
@@ -68,10 +82,10 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getActiveProducts } from '@/api/goodsApi'
-import { seckill as doSeckillApi } from '@/api/seckillApi'
+import { seckill as doSeckillApi, getSeckillPath, getCaptcha } from '@/api/seckillApi'
 import CountDown from '@/components/Seckill/CountDown.vue'
-import CaptchaInput from '@/components/Common/CaptchaInput.vue'
 import { ElMessage } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 
 // [修复] S-23: 添加 useRouter 用于结果弹窗中跳转订单页
 const router = useRouter()
@@ -83,8 +97,37 @@ const seckilling = ref(null)
 const grabbedCounts = ref({})
 const resultVisible = ref(false)
 const seckillResult = ref(null)
-/* [修复] 任务4: 验证码组件引用，key 为商品 ID */
-const captchaRefs = {}
+// [创新] 数学验证码：存储每个商品的验证码数据和用户输入
+const captchaData = reactive({})
+const captchaInputs = reactive({})
+const captchaLoading = reactive({})
+// [创新] 秒杀地址隐藏：存储每个商品的 Path Token
+const pathTokens = reactive({})
+
+// [创新] 从后端获取数学验证码算式
+async function refreshCaptcha(productId) {
+  captchaLoading[productId] = true
+  try {
+    const data = await getCaptcha(productId)
+    captchaData[productId] = data
+    captchaInputs[productId] = ''
+  } catch (e) {
+    console.error('获取验证码失败:', e)
+    ElMessage.warning('获取验证码失败，请稍后重试')
+  } finally {
+    captchaLoading[productId] = false
+  }
+}
+
+// [创新] 从后端获取秒杀隐藏路径 Token
+async function refreshPathToken(productId) {
+  try {
+    const data = await getSeckillPath(productId)
+    pathTokens[productId] = data.path_token
+  } catch (e) {
+    console.error('获取秒杀路径失败:', e)
+  }
+}
 
 function progressColor(pct) {
   if (pct > 50) return '#67c23a'
@@ -123,51 +166,75 @@ async function loadProducts() {
   try {
     const data = await getActiveProducts()
     products.value = Array.isArray(data) ? data : (data?.list || [])
-  } catch (e) { /* [修复] 错误已在拦截器中处理 */ console.error('加载商品列表失败:', e) } finally { loading.value = false }
+    // [创新] 自动获取每个商品的验证码和路径 Token
+    products.value.forEach(p => {
+      if (p.remain_stock > 0) {
+        refreshCaptcha(p.id)
+        refreshPathToken(p.id)
+      }
+    })
+  } catch (e) { console.error('加载商品列表失败:', e) } finally { loading.value = false }
 }
 
 async function doSeckill(product) {
   // [修复] S-23: 防重复提交 - 如果正在秒杀中或已达限购上限，直接返回
   if (seckilling.value || isLimitReached(product)) return
 
-  /* [修复] 任务4: 秒杀前先校验验证码 */
-  const captchaRef = captchaRefs[product.id]
-  if (captchaRef) {
-    const result = captchaRef.validate()
-    if (!result.valid) {
-      ElMessage.warning(result.message)
-      return
-    }
+  // [创新] 数学验证码校验
+  const captcha = captchaData[product.id]
+  if (!captcha) {
+    ElMessage.warning('请先获取验证码')
+    return
+  }
+  const userAnswer = parseInt(captchaInputs[product.id])
+  if (!userAnswer || isNaN(userAnswer)) {
+    ElMessage.warning('请输入验证码计算结果')
+    return
+  }
+
+  // [创新] 秒杀地址隐藏：校验 Path Token
+  const pathToken = pathTokens[product.id]
+  if (!pathToken) {
+    ElMessage.warning('秒杀地址已过期，请刷新页面')
+    return
   }
 
   // [修复] S-23: 立即设置秒杀中状态，防止重复点击
   seckilling.value = product.id
   try {
-    // [修复] 生成幂等性 Key，防止重复提交：使用 crypto.randomUUID() + 时间戳
+    // [修复] 生成幂等性 Key，防止重复提交
     const idempotentKey = crypto.randomUUID()
-    const data = await doSeckillApi({ product_id: product.id, quantity: 1, idempotent_key: idempotentKey })
+    const data = await doSeckillApi({
+      product_id: product.id,
+      quantity: 1,
+      idempotent_key: idempotentKey,
+      path_token: pathToken,          // [创新] 秒杀地址隐藏 Token
+      captcha_code: userAnswer,       // [创新] 数学验证码答案
+      captcha_id: captcha.captcha_id  // [创新] 验证码唯一ID
+    })
     seckillResult.value = data
     resultVisible.value = true
     if (data.status === 'queued') {
-      // [修复] 限购规则改造：累加已购买数量
       grabbedCounts.value[product.id] = (grabbedCounts.value[product.id] || 0) + 1
       loadProducts()
     }
-    /* [修复] 任务4: 秒杀成功后重置验证码 */
-    if (captchaRef) captchaRef.reset()
+    // [创新] 秒杀成功后刷新验证码和路径 Token
+    refreshCaptcha(product.id)
+    refreshPathToken(product.id)
   } catch (e) {
     console.error('秒杀请求失败:', e)
-    // [修复] 限购规则改造：已参与过错误时标记已达上限
     const errMsg = e?.message || e?.toString() || ''
     if (errMsg.includes('已参与过') || errMsg.includes('限购')) {
       const limit = product.limit_per_user || 1
       grabbedCounts.value[product.id] = limit
       ElMessage.warning(`该商品每人限购${limit}件，您已达到上限`)
     }
-    /* [修复] 任务4: 秒杀失败也刷新验证码 */
-    if (captchaRef) captchaRef.refreshCaptcha()
+    // [创新] 秒杀失败刷新验证码和路径 Token
+    if (errMsg.includes('验证码') || errMsg.includes('地址')) {
+      refreshCaptcha(product.id)
+      refreshPathToken(product.id)
+    }
   } finally {
-    // [修复] S-23: 秒杀完成（无论成功失败）后清除秒杀中状态
     seckilling.value = null
   }
 }
@@ -200,6 +267,11 @@ onMounted(loadProducts)
 /* [修复] 任务4: 验证码区域样式 */
 .captcha-row { margin-top: 8px; margin-bottom: 4px }
 .captcha-label { font-size: 12px; color: #888; display: block; margin-bottom: 4px }
+/* [创新] 数学验证码样式 */
+.math-captcha-wrap { display: flex; align-items: center; gap: 8px }
+.math-expr { display: inline-flex; align-items: center; justify-content: center; min-width: 80px; height: 32px; padding: 0 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; user-select: none; letter-spacing: 2px; font-family: 'Courier New', monospace }
+.math-expr:hover { opacity: 0.85 }
+.captcha-input-field { width: 100px !important }
 .order-info { text-align: left; margin: 12px 0 }
 .order-info p { margin: 6px 0; color: var(--text-secondary) }
 </style>

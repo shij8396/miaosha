@@ -10,7 +10,7 @@ server:
   write_timeout: 5   # [优化] 缩短超时防响应阻塞
   idle_timeout: 60
   max_body_bytes: 1048576
-  sign_secret: "YOUR_SIGN_SECRET"
+  sign_secret: "miaosha-sign-secret-2026"
   performance_mode: true  # [优化] 压测模式：跳过 TraceID/RequestLog/CORS 中间件，减少请求开销
 
 jwt:
@@ -23,7 +23,7 @@ mysql:
     host: "127.0.0.1"
     port: 3306
     user: "root"
-    password: "YOUR_MYSQL_PASSWORD"
+    password: "123456"
     database: "miaosha"
     charset: "utf8mb4"
     max_idle_conns: 50
@@ -45,7 +45,7 @@ mysql:
 redis:
   addrs:
     - "127.0.0.1:6379"
-  password: "YOUR_REDIS_PASSWORD"
+  password: ""
   pool_size: 100
   min_idle_conns: 20
   dial_timeout: 5

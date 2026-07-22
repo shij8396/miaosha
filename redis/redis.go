@@ -341,3 +341,66 @@ func Close() error {
 	if rdb != nil { return rdb.Close() }
 	return nil
 }
+
+// ==================== [创新] 秒杀地址隐藏 ====================
+// 借鉴 qiurunze123/miaosha（19k Stars），秒杀开始前动态生成隐藏 URL Token
+// 用户需要先获取动态 Path Token，再携带 Token 调用秒杀接口
+// 防止脚本提前构造请求，有效阻隔黄牛和自动化工具
+
+const SeckillPathPrefix = "seckill:path:"
+
+// SetSeckillPath 生成并存储秒杀隐藏路径 Token
+// productID: 商品ID, userID: 用户ID, token: 随机生成的路径 Token, ttl: 过期时间
+func SetSeckillPath(ctx context.Context, userID, productID int64, token string, ttl time.Duration) error {
+	key := fmt.Sprintf("%s%d:%d", SeckillPathPrefix, userID, productID)
+	return rdb.Set(ctx, key, token, ttl).Err()
+}
+
+// GetAndVerifySeckillPath 获取并校验秒杀隐藏路径 Token，校验后立即删除（一次性使用）
+// 返回 true 表示 Token 有效，false 表示无效或已过期
+func GetAndVerifySeckillPath(ctx context.Context, userID, productID int64, token string) (bool, error) {
+	key := fmt.Sprintf("%s%d:%d", SeckillPathPrefix, userID, productID)
+	luaScript := `
+		local val = redis.call('GET', KEYS[1])
+		if not val then return 0 end
+		if val ~= ARGV[1] then return 0 end
+		redis.call('DEL', KEYS[1])
+		return 1
+	`
+	result, err := rdb.Eval(ctx, luaScript, []string{key}, token).Int()
+	if err != nil {
+		return false, fmt.Errorf("秒杀路径校验失败: %w", err)
+	}
+	return result == 1, nil
+}
+
+// ==================== [创新] 数学验证码 ====================
+// 借鉴 qiurunze123/miaosha，后端生成随机数学算式，用户计算后提交答案
+// 答案存储在 Redis 中，校验后删除，防止脚本暴力破解
+
+const CaptchaPrefix = "seckill:captcha:"
+
+// SetCaptcha 存储数学验证码答案
+// captchaID: 验证码唯一ID, answer: 正确答案, ttl: 过期时间
+func SetCaptcha(ctx context.Context, captchaID string, answer int, ttl time.Duration) error {
+	key := fmt.Sprintf("%s%s", CaptchaPrefix, captchaID)
+	return rdb.Set(ctx, key, answer, ttl).Err()
+}
+
+// GetAndVerifyCaptcha 校验数学验证码答案，校验后立即删除（一次性使用）
+// 返回 true 表示答案正确，false 表示错误或已过期
+func GetAndVerifyCaptcha(ctx context.Context, captchaID string, answer int) (bool, error) {
+	key := fmt.Sprintf("%s%s", CaptchaPrefix, captchaID)
+	luaScript := `
+		local val = redis.call('GET', KEYS[1])
+		if not val then return 0 end
+		if tonumber(val) ~= tonumber(ARGV[1]) then return 0 end
+		redis.call('DEL', KEYS[1])
+		return 1
+	`
+	result, err := rdb.Eval(ctx, luaScript, []string{key}, answer).Int()
+	if err != nil {
+		return false, fmt.Errorf("验证码校验失败: %w", err)
+	}
+	return result == 1, nil
+}

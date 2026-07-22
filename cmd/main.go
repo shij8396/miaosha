@@ -74,9 +74,7 @@ func main() {
 	defer redisClient.Close()
 	log.L().Info("Redis Cluster集群初始化完成")
 
-	if err := mq.Init(&cfg.RabbitMQ); err != nil { log.L().Fatalw("RabbitMQ初始化失败", "error", err) }
-	defer mq.Close()
-	log.L().Info("RabbitMQ镜像队列+延迟队列+死信队列初始化完成")
+	if err := mq.Init(&cfg.RabbitMQ); err != nil { log.L().Warnw("RabbitMQ初始化失败，MQ功能不可用", "error", err) } else { defer mq.Close(); log.L().Info("RabbitMQ镜像队列+延迟队列+死信队列初始化完成") }
 
 	if err := kafka.InitProducer(&cfg.Kafka, log.L()); err != nil { log.L().Warnw("Kafka生产者初始化失败", "error", err) } else { defer kafka.Close(); log.L().Info("Kafka生产者初始化完成") }
 
@@ -191,6 +189,8 @@ func main() {
 		api.POST("/product/batch", productController.BatchImportProducts) // [修复] 商品批量导入
 		api.POST("/product/upload", productController.UploadImage)       // [修复] 商品图片上传
 		api.POST("/seckill", seckillController.Seckill)
+		api.GET("/seckill/path", seckillController.GetSeckillPath)       // [创新] 秒杀地址隐藏
+		api.GET("/seckill/captcha", seckillController.GetCaptcha)        // [创新] 数学验证码
 		api.GET("/order/list", orderController.GetUserOrders)
 		api.GET("/order/:order_no", orderController.GetOrderDetail)
 		api.POST("/order/cancel", orderController.CancelOrder)

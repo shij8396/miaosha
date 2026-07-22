@@ -31,6 +31,8 @@
 -  **Lua 原子扣减**：库存扣减 + 幂等校验 + 限购计数三合一，一次 RTT
 -  **Singleflight 请求合并**：256 分片，50ms 窗口去重
 -  **Snowflake 分布式 ID**：1024 缓冲通道，无锁获取
+-  **秒杀地址隐藏**：动态生成 32 位 Path Token，60s 有效期，一次性校验（防脚本）
+-  **数学验证码**：随机算式 + Redis 后端校验，答案校验后立即删除（防自动化）
 
 </td>
 <td width="50%">
@@ -235,8 +237,76 @@ miaosha/
 | 限流层 | QPS 超阈值 | 拒绝请求 | "活动太火爆，请稍后再试" |
 | 库存层 | Redis 库存不足 | 返回售罄 | "已售罄，下次早点来" |
 | 中间件层 | Redis/MQ 故障 | 数据库兜底 | "系统繁忙，请稍后重试" |
-| 服务层 | 异常率过高 | 快速失败 | "服务暂时不可用" |
+| 服务层 | 异常率过高 | 快速失败 | "服务暂时不可用" |---
 </details>
+
+---
+
+##  安全防护机制（新增）
+
+借鉴 GitHub 19k+ Stars 的 [qiurunze123/miaosha](https://github.com/qiurunze123/miaosha)，新增两道安全防护：
+
+### 1. 秒杀地址隐藏
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant F as 前端
+    participant B as 后端
+    participant R as Redis
+
+    U->>F: 点击秒杀按钮
+    F->>B: GET /api/v1/seckill/path?product_id=1
+    B->>B: 生成 32位随机 Path Token
+    B->>R: SET path + TTL 60s
+    B-->>F: 返回 path_token
+    F->>B: POST /api/v1/seckill (携带 path_token)
+    B->>R: Lua: GET+DEL path_token
+    R-->>B: 校验结果
+    alt 校验通过
+        B->>B: 继续秒杀流程
+    else 校验失败
+        B-->>F: 400 "秒杀地址已失效"
+    end
+```
+
+- **动态生成**：每次点击秒杀按钮，后端生成新的 32 位 hex Token
+- **一次性使用**：Lua 脚本 GET + DEL 原子操作，校验后立即删除
+- **60s 有效期**：防止Token被截获后长期滥用
+- **管理员豁免**：admin/super_admin 角色跳过校验
+
+### 2. 数学验证码
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant F as 前端
+    participant B as 后端
+    participant R as Redis
+
+    U->>F: 进入秒杀页面
+    F->>B: GET /api/v1/seckill/captcha?product_id=1
+    B->>B: 生成随机算式 (如 "9+7*3")
+    B->>R: SET captcha_id + answer + TTL 120s
+    B-->>F: 返回算式 + captcha_id
+    U->>F: 用户计算并输入答案
+    F->>B: POST /api/v1/seckill (携带 captcha_code + captcha_id)
+    B->>R: Lua: GET+DEL captcha 答案
+    R-->>B: 校验结果
+    alt 答案正确
+        B->>B: 继续秒杀流程
+    else 答案错误
+        B-->>F: 400 "验证码错误或已过期"
+    end
+```
+
+- **随机算式**：`num1 op1 num2 op2 num3`，op ∈ {+, -, *}
+- **后端校验**：答案存储在 Redis，前端不知晓正确答案
+- **一次性使用**：校验后立即删除，防止脚本暴力破解
+- **120s 有效期**：过期自动清除
+- **管理员豁免**：admin/super_admin 角色跳过校验
+
+> **设计理念**：两道防线配合，路径隐藏防止脚本提前构造请求，数学验证码防止自动化工具批量提交，有效阻隔黄牛和机器人。
 
 ---
 

@@ -144,6 +144,22 @@ type SeckillRequest struct {
 	ProductID     int64  `json:"product_id" binding:"required,gt=0"`
 	Quantity      int    `json:"quantity" binding:"required,gt=0"`
 	IdempotentKey string `json:"idempotent_key"` // [修复] 幂等性 Key，防止重复提交
+	PathToken     string `json:"path_token"`     // [创新] 秒杀地址隐藏 Token
+	CaptchaCode   int    `json:"captcha_code"`   // [创新] 数学验证码答案
+	CaptchaID     string `json:"captcha_id"`     // [创新] 验证码唯一ID，用于后端校验关联
+}
+
+// [创新] 秒杀地址隐藏响应
+type SeckillPathResponse struct {
+	PathToken string `json:"path_token"`
+	ExpireSec int    `json:"expire_sec"`
+}
+
+// [创新] 数学验证码响应
+type CaptchaResponse struct {
+	Expression string `json:"expression"` // 数学表达式，如 "3+5*2"
+	ExpireSec  int    `json:"expire_sec"` // 过期秒数
+	CaptchaID  string `json:"captcha_id"` // 验证码唯一ID，用于校验时关联
 }
 
 type SeckillResponse struct {

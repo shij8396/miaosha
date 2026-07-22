@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -97,6 +99,35 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 	}
 	uid := userID.(int64)
 
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// [创新] 秒杀地址隐藏：校验动态 Path Token，防止脚本提前构造请求
+	// 借鉴 qiurunze123/miaosha（19k Stars）
+	if !isAdmin {
+		valid, err := redisClient.GetAndVerifySeckillPath(ctx, uid, req.ProductID, req.PathToken)
+		if err != nil || !valid {
+			log.L().Warnw("秒杀路径校验失败", "user_id", uid, "product_id", req.ProductID)
+			utils.Error(c, 400, "秒杀地址已失效，请刷新页面重试")
+			return
+		}
+	}
+
+	// [创新] 数学验证码：后端校验算式答案，防止脚本自动化攻击
+	// 借鉴 qiurunze123/miaosha（19k Stars）
+	if !isAdmin && req.CaptchaCode > 0 {
+		captchaID := req.CaptchaID
+		if captchaID == "" {
+			captchaID = fmt.Sprintf("%d:%d", uid, req.ProductID)
+		}
+		valid, err := redisClient.GetAndVerifyCaptcha(ctx, captchaID, req.CaptchaCode)
+		if err != nil || !valid {
+			log.L().Warnw("数学验证码校验失败", "user_id", uid, "product_id", req.ProductID)
+			utils.Error(c, 400, "验证码错误或已过期，请刷新后重试")
+			return
+		}
+	}
+
 	// [修复] 非管理员需要经过热点参数限流
 	if !isAdmin {
 		hotEntry, hotErr := sentinelClient.EntryWithArgs("seckill_product", req.ProductID)
@@ -111,8 +142,6 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
 	// [修复] 从请求上下文中提取 trace_id，传递给 service 层，确保链路追踪不中断
 	traceID := utils.GetTraceID(c)
 
@@ -201,6 +230,141 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 	}
 	log.L().Infow(roleLabel+"秒杀排队成功", "trace_id", traceID, "user_id", uid, "product_id", req.ProductID, "order_no", resp.OrderNo, "cost_ms", time.Since(startTime).Milliseconds())
 	utils.Success(c, resp)
+}
+
+// GetSeckillPath 获取秒杀隐藏路径 Token
+// @Summary      获取秒杀隐藏路径
+// @Description  秒杀前获取动态 Path Token，防止脚本提前构造请求（借鉴 qiurunze123/miaosha）
+// @Tags         秒杀模块
+// @Produce      json
+// @Param        product_id query int64 true "商品ID"
+// @Security     BearerAuth
+// @Success      200  {object}  utils.Response{data=model.SeckillPathResponse}  "获取成功"
+// @Router       /api/v1/seckill/path [get]
+func (ctl *SeckillController) GetSeckillPath(c *gin.Context) {
+	productID, err := parseProductID(c)
+	if err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	uid := c.GetInt64("user_id")
+
+	// 生成随机 Path Token（32位十六进制）
+	b := make([]byte, 16)
+	rand.Read(b)
+	token := hex.EncodeToString(b)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+	ttl := 60 * time.Second // 60秒有效期
+	if err := redisClient.SetSeckillPath(ctx, uid, productID, token, ttl); err != nil {
+		log.L().Errorw("设置秒杀路径Token失败", "error", err, "user_id", uid, "product_id", productID)
+		utils.Error(c, 500, "系统繁忙，请稍后重试")
+		return
+	}
+
+	utils.Success(c, &model.SeckillPathResponse{
+		PathToken: token,
+		ExpireSec: 60,
+	})
+}
+
+// GetCaptcha 获取数学验证码
+// @Summary      获取数学验证码
+// @Description  生成随机数学算式，后端存储答案，用户计算后提交（借鉴 qiurunze123/miaosha）
+// @Tags         秒杀模块
+// @Produce      json
+// @Param        product_id query int64 true "商品ID"
+// @Security     BearerAuth
+// @Success      200  {object}  utils.Response{data=model.CaptchaResponse}  "获取成功"
+// @Router       /api/v1/seckill/captcha [get]
+func (ctl *SeckillController) GetCaptcha(c *gin.Context) {
+	productID, err := parseProductID(c)
+	if err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	uid := c.GetInt64("user_id")
+	_ = uid // 预留用于日志追踪
+	_ = productID // 预留用于扩展
+
+	// 生成随机数学算式：num1 + op1 + num2 + op2 + num3
+	// 借鉴 qiurunze123/miaosha 的验证码设计
+	expr, answer := generateMathExpression()
+
+	// 生成唯一 CaptchaID
+	b := make([]byte, 8)
+	rand.Read(b)
+	captchaID := hex.EncodeToString(b)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+	ttl := 120 * time.Second // 2分钟有效期
+	if err := redisClient.SetCaptcha(ctx, captchaID, answer, ttl); err != nil {
+		log.L().Errorw("设置验证码失败", "error", err, "user_id", uid)
+		utils.Error(c, 500, "系统繁忙，请稍后重试")
+		return
+	}
+
+	utils.Success(c, &model.CaptchaResponse{
+		Expression: expr,
+		ExpireSec:  120,
+		CaptchaID:  captchaID,
+	})
+}
+
+// parseProductID 从 query 参数中解析 product_id
+func parseProductID(c *gin.Context) (int64, error) {
+	pid := c.Query("product_id")
+	if pid == "" {
+		return 0, fmt.Errorf("缺少product_id参数")
+	}
+	var productID int64
+	if _, err := fmt.Sscanf(pid, "%d", &productID); err != nil || productID <= 0 {
+		return 0, fmt.Errorf("product_id参数无效")
+	}
+	return productID, nil
+}
+
+// generateMathExpression 生成随机数学算式，返回 (表达式字符串, 正确答案)
+// 表达式格式: num1 op1 num2 op2 num3，其中 op ∈ {+, -, *}
+// 借鉴 qiurunze123/miaosha 的验证码算法
+func generateMathExpression() (string, int) {
+	ops := []byte{'+', '-', '*'}
+	b := make([]byte, 1)
+	rand.Read(b)
+	n1 := int(b[0] % 10)
+	rand.Read(b)
+	n2 := int(b[0] % 10)
+	rand.Read(b)
+	n3 := int(b[0] % 10)
+	rand.Read(b)
+	op1 := int(b[0]) % 3
+	rand.Read(b)
+	op2 := int(b[0]) % 3
+
+	expr := fmt.Sprintf("%d%c%d%c%d", n1, ops[op1], n2, ops[op2], n3)
+
+	// 计算正确答案（注意：没有括号，按从左到右顺序计算，与 JavaScript eval 一致）
+	answer := n1
+	switch ops[op1] {
+	case '+':
+		answer += n2
+	case '-':
+		answer -= n2
+	case '*':
+		answer *= n2
+	}
+	switch ops[op2] {
+	case '+':
+		answer += n3
+	case '-':
+		answer -= n3
+	case '*':
+		answer *= n3
+	}
+
+	return expr, answer
 }
 
 // Health 健康检查端点

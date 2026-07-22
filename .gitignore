@@ -59,5 +59,12 @@ frontend/dist/
 # ===== 文档 =====
 *.docx
 
+# ===== Redis 持久化 =====
+dump.rdb
+
+# ===== 对比分析 =====
+compare/
+
 # ===== 一次性工具 =====
 genhash/
+tools/
