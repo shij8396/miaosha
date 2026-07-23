@@ -80,6 +80,18 @@ CREATE TABLE IF NOT EXISTS t_recon_diff (
     PRIMARY KEY (id), KEY idx_product_id (product_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- [修复] 黑名单表，用于风控管理
+CREATE TABLE IF NOT EXISTS t_blacklist (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '黑名单ID',
+    type VARCHAR(32) NOT NULL COMMENT '类型ip/user',
+    value VARCHAR(256) NOT NULL COMMENT '黑名单值(IP地址或用户ID)',
+    reason VARCHAR(512) DEFAULT '' COMMENT '封禁原因',
+    created_at DATETIME(3) DEFAULT NULL COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY idx_t_blacklist_value (value),
+    KEY idx_t_blacklist_type (type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控黑名单表';
+
 -- [修复] 审计日志表，记录所有后台操作变更
 CREATE TABLE IF NOT EXISTS t_audit_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',

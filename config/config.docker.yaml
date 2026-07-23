@@ -11,11 +11,11 @@ server:
   write_timeout: 5
   idle_timeout: 60
   max_body_bytes: 1048576
-  sign_secret: ""  # 由 MIAOSHA_SERVER_SIGN_SECRET 注入
+  sign_secret: "miaosha-sign-secret-2026"  # 由 MIAOSHA_SERVER_SIGN_SECRET 注入
   performance_mode: true
 
 jwt:
-  secret: ""  # 由 MIAOSHA_JWT_SECRET 注入
+  secret: "miaosha-jwt-secret-key-2026-enterprise-production"  # 由 MIAOSHA_JWT_SECRET 注入
   expire_hours: 24
   issuer: "miaosha-system"
 
@@ -25,7 +25,7 @@ mysql:
     host: "mysql-master"
     port: 3306
     user: "root"
-    password: ""  # 由 MIAOSHA_MYSQL_MASTER_PASSWORD 注入
+    password: "miaosha_master_2026"  # 由 MIAOSHA_MYSQL_MASTER_PASSWORD 注入
     database: "miaosha"
     charset: "utf8mb4"
     max_idle_conns: 20
@@ -35,7 +35,7 @@ mysql:
     - host: "mysql-slave"
       port: 3306
       user: "root"
-      password: ""  # 由 MIAOSHA_MYSQL_SLAVES_0_PASSWORD 注入
+      password: "miaosha_slave_2026"  # 由 MIAOSHA_MYSQL_SLAVES_0_PASSWORD 注入
       database: "miaosha"
       charset: "utf8mb4"
       max_idle_conns: 20
@@ -47,7 +47,7 @@ redis:
   # [修复] 容器内使用 Docker 服务名 redis-node1
   addrs:
     - "redis-node1:6379"
-  password: ""  # 由 MIAOSHA_REDIS_PASSWORD 注入
+  password: "miaosha_redis_2026"  # 由 MIAOSHA_REDIS_PASSWORD 注入
   pool_size: 100
   min_idle_conns: 20
   dial_timeout: 5
@@ -57,7 +57,7 @@ redis:
 rabbitmq:
   # [修复] 容器内使用 Docker 服务名 rabbitmq，vhost 为 /miaosha
   urls:
-    - ""  # 由 MIAOSHA_RABBITMQ_URLS_0 注入
+    - "amqp://admin:miaosha_mq_2026@rabbitmq:5672/miaosha"  # 由 MIAOSHA_RABBITMQ_URLS_0 注入
   vhost: "/miaosha"
   exchange:
     order: "miaosha.order.exchange"
