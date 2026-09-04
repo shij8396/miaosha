@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	sentinel "github.com/alibaba/sentinel-golang/api"
-	sentinelConfig "github.com/alibaba/sentinel-golang/core/config"
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
+	sentinelConfig "github.com/alibaba/sentinel-golang/core/config"
 	"github.com/alibaba/sentinel-golang/core/flow"
 	"github.com/alibaba/sentinel-golang/core/hotspot"
 )

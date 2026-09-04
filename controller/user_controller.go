@@ -29,9 +29,15 @@ func NewUserController(userService *service.UserService) *UserController {
 // @Router       /api/v1/user/register [post]
 func (ctl *UserController) Register(c *gin.Context) {
 	var req model.RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
 	user, err := ctl.userService.Register(&req)
-	if err != nil { utils.Error(c, 400, err.Error()); return }
+	if err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
 	utils.SuccessWithMessage(c, "注册成功", gin.H{"user_id": user.ID, "username": user.Username})
 }
 
@@ -48,9 +54,15 @@ func (ctl *UserController) Register(c *gin.Context) {
 // @Router       /api/v1/user/login [post]
 func (ctl *UserController) Login(c *gin.Context) {
 	var req model.LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
 	resp, err := ctl.userService.Login(&req)
-	if err != nil { utils.Error(c, 400, err.Error()); return }
+	if err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
 	utils.Success(c, resp)
 }
 
@@ -69,12 +81,19 @@ func (ctl *UserController) Login(c *gin.Context) {
 func (ctl *UserController) GetUserList(c *gin.Context) {
 	page := 1
 	pageSize := 10
-	if p, ok := c.GetQuery("page"); ok { fmt.Sscanf(p, "%d", &page) }
-	if ps, ok := c.GetQuery("page_size"); ok { fmt.Sscanf(ps, "%d", &pageSize) }
+	if p, ok := c.GetQuery("page"); ok {
+		fmt.Sscanf(p, "%d", &page)
+	}
+	if ps, ok := c.GetQuery("page_size"); ok {
+		fmt.Sscanf(ps, "%d", &pageSize)
+	}
 	// [修复] 分页上限限制
 	pageSize = utils.ClampPageSize(pageSize)
 	list, total, err := ctl.userService.GetUserList(page, pageSize)
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	utils.Success(c, gin.H{"list": list, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -92,8 +111,14 @@ func (ctl *UserController) GetUserList(c *gin.Context) {
 // @Router       /api/v1/user/role [put]
 func (ctl *UserController) UpdateUserRole(c *gin.Context) {
 	var req model.UpdateUserRoleRequest
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
-	if err := ctl.userService.UpdateUserRole(&req); err != nil { utils.Error(c, 400, err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+	if err := ctl.userService.UpdateUserRole(&req); err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
 	utils.SuccessWithMessage(c, "角色更新成功", nil)
 }
 
@@ -109,10 +134,16 @@ func (ctl *UserController) UpdateUserRole(c *gin.Context) {
 // @Router       /api/v1/user/info [get]
 func (ctl *UserController) GetUserInfo(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	if !exists { utils.Unauthorized(c, "请先登录"); return }
+	if !exists {
+		utils.Unauthorized(c, "请先登录")
+		return
+	}
 	uid := userID.(int64)
 	user, err := ctl.userService.GetUserInfo(uid)
-	if err != nil { utils.NotFound(c, err.Error()); return }
+	if err != nil {
+		utils.NotFound(c, err.Error())
+		return
+	}
 	utils.Success(c, gin.H{
 		"user_id": user.ID, "username": user.Username, "nickname": user.Nickname,
 		"phone": user.Phone, "role": user.Role, "status": user.Status, "created_at": user.CreatedAt,
@@ -134,13 +165,19 @@ func (ctl *UserController) GetUserInfo(c *gin.Context) {
 // @Router       /api/v1/user/password [put]
 func (ctl *UserController) ChangePassword(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	if !exists { utils.Unauthorized(c, "请先登录"); return }
+	if !exists {
+		utils.Unauthorized(c, "请先登录")
+		return
+	}
 	uid := userID.(int64)
 	var req struct {
 		OldPassword string `json:"old_password" binding:"required"`
 		NewPassword string `json:"new_password" binding:"required,min=6"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
 	if err := ctl.userService.ChangePassword(uid, req.OldPassword, req.NewPassword); err != nil {
 		utils.Error(c, 400, err.Error())
 		return
@@ -161,7 +198,10 @@ func (ctl *UserController) ChangePassword(c *gin.Context) {
 // @Router       /api/v1/user/forgot-password [post]
 func (ctl *UserController) ForgotPassword(c *gin.Context) {
 	var req model.ForgotPasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
 	if err := ctl.userService.ForgotPassword(&req); err != nil {
 		utils.Error(c, 400, err.Error())
 		return

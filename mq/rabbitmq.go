@@ -58,7 +58,7 @@ func (p *ChannelPool) Close() {
 }
 
 var (
-	conn      *amqp.Connection
+	conn *amqp.Connection
 	// [P0-1] 移除全局 channel + publishMu，改用 ChannelPool 实现 N 路并发发布
 	channelPool *ChannelPool
 	consumeCh   *amqp.Channel

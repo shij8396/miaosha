@@ -122,10 +122,10 @@ func StartDeadLetterConsumer(handler OrderHandler) {
 					continue
 				}
 				msg.Ack(false)
-			// [增强] 死信消费完成同样计入消费计数
-			IncConsumed()
-			log.L().Infow("超时订单已自动取消", "worker_id", workerID, "order_no", timeoutMsg["order_no"])
-		}
-	}(i)
+				// [增强] 死信消费完成同样计入消费计数
+				IncConsumed()
+				log.L().Infow("超时订单已自动取消", "worker_id", workerID, "order_no", timeoutMsg["order_no"])
+			}
+		}(i)
 	}
 }

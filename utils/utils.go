@@ -65,7 +65,7 @@ func (m *JWTManager) GenerateToken(userID int64, username, role string) (string,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer: m.issuer, IssuedAt: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(m.expireHours) * time.Hour)),
-			Subject: fmt.Sprintf("%d", userID),
+			Subject:   fmt.Sprintf("%d", userID),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -79,15 +79,21 @@ func (m *JWTManager) ParseToken(tokenString string) (*JWTClaims, error) {
 		}
 		return m.secret, nil
 	})
-	if err != nil { return nil, fmt.Errorf("JWT解析失败: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("JWT解析失败: %w", err)
+	}
 	claims, ok := token.Claims.(*JWTClaims)
-	if !ok || !token.Valid { return nil, fmt.Errorf("无效的JWT Token") }
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("无效的JWT Token")
+	}
 	return claims, nil
 }
 
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-	if err != nil { return "", fmt.Errorf("密码加密失败: %w", err) }
+	if err != nil {
+		return "", fmt.Errorf("密码加密失败: %w", err)
+	}
 	return string(bytes), nil
 }
 
@@ -123,13 +129,19 @@ func (s *Snowflake) NextID() (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now().UnixMilli()
-	if now < s.lastStamp { return 0, fmt.Errorf("时钟回拨，拒绝生成ID") }
+	if now < s.lastStamp {
+		return 0, fmt.Errorf("时钟回拨，拒绝生成ID")
+	}
 	if now == s.lastStamp {
 		s.sequence = (s.sequence + 1) & sequenceMax
 		if s.sequence == 0 {
-			for now <= s.lastStamp { now = time.Now().UnixMilli() }
+			for now <= s.lastStamp {
+				now = time.Now().UnixMilli()
+			}
 		}
-	} else { s.sequence = 0 }
+	} else {
+		s.sequence = 0
+	}
 	s.lastStamp = now
 	return (now-epoch)<<timeShift | (s.workerID << workerIDShift) | s.sequence, nil
 }
@@ -190,7 +202,9 @@ func (bs *BufferedSnowflake) Close() {
 
 func GenerateOrderNo(g IDGenerator) (string, error) {
 	id, err := g.NextID()
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("MS%d", id), nil
 }
 
@@ -198,7 +212,9 @@ const TraceIDKey = "trace_id"
 
 func GetTraceID(c *gin.Context) string {
 	traceID, _ := c.Get(TraceIDKey)
-	if s, ok := traceID.(string); ok { return s }
+	if s, ok := traceID.(string); ok {
+		return s
+	}
 	return ""
 }
 

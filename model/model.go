@@ -1,8 +1,8 @@
 package model
 
 import (
-	"time"
 	"gorm.io/gorm"
+	"time"
 )
 
 type User struct {
@@ -116,29 +116,29 @@ type RegisterRequest struct {
 }
 
 type CreateProductRequest struct {
-	Name         string  `json:"name" binding:"required,max=256"`
-	Description  string  `json:"description"`
-	Price        float64 `json:"price" binding:"required,gt=0"`
-	SeckillPrice float64 `json:"seckill_price" binding:"required,gt=0"`
-	TotalStock   int     `json:"total_stock" binding:"required,gt=0"`
-	StartTime    string  `json:"start_time" binding:"required"`
-	EndTime      string  `json:"end_time" binding:"required"`
-	LimitPerUser int     `json:"limit_per_user"`
-	ImageURL     string  `json:"image_url"`
+	Name         string     `json:"name" binding:"required,max=256"`
+	Description  string     `json:"description"`
+	Price        float64    `json:"price" binding:"required,gt=0"`
+	SeckillPrice float64    `json:"seckill_price" binding:"required,gt=0"`
+	TotalStock   int        `json:"total_stock" binding:"required,gt=0"`
+	StartTime    string     `json:"start_time" binding:"required"`
+	EndTime      string     `json:"end_time" binding:"required"`
+	LimitPerUser int        `json:"limit_per_user"`
+	ImageURL     string     `json:"image_url"`
 	SKUs         []SKUInput `json:"skus"` // [修复] 商品配置（SKU）：不同配置不同价格
 }
 
 type UpdateProductRequest struct {
-	Name         *string  `json:"name"`
-	Description  *string  `json:"description"`
-	Price        *float64 `json:"price"`
-	SeckillPrice *float64 `json:"seckill_price"`
-	TotalStock   *int     `json:"total_stock"`
-	StartTime    *string  `json:"start_time"`
-	EndTime      *string  `json:"end_time"`
-	Status       *int8    `json:"status"`
-	LimitPerUser *int     `json:"limit_per_user"`
-	ImageURL     *string  `json:"image_url"`
+	Name         *string    `json:"name"`
+	Description  *string    `json:"description"`
+	Price        *float64   `json:"price"`
+	SeckillPrice *float64   `json:"seckill_price"`
+	TotalStock   *int       `json:"total_stock"`
+	StartTime    *string    `json:"start_time"`
+	EndTime      *string    `json:"end_time"`
+	Status       *int8      `json:"status"`
+	LimitPerUser *int       `json:"limit_per_user"`
+	ImageURL     *string    `json:"image_url"`
 	SKUs         []SKUInput `json:"skus"` // [修复] 传入时整体替换商品配置；nil 表示不修改
 }
 
@@ -230,27 +230,27 @@ func (Blacklist) TableName() string { return "t_blacklist" }
 
 // SentinelRule Sentinel 限流/熔断规则（仅用于前端展示和管理，实际规则存储在内存中）
 type SentinelRule struct {
-	ID               int64  `json:"id"`
-	Resource         string `json:"resource"`          // 资源名
-	Grade            int    `json:"grade"`             // 0=QPS, 1=线程数
-	Count            int    `json:"count"`             // 阈值
-	Strategy         int    `json:"strategy"`          // 0=直接, 1=关联, 2=链路
-	ControlBehavior  int    `json:"control_behavior"`  // 0=快速失败, 1=WarmUp, 2=排队等待
-	LimitApp         string `json:"limit_app"`         // 来源应用
-	WarmUpPeriodSec  int    `json:"warm_up_period_sec"` // 预热时长(秒)
-	MaxQueueingTimeMs int   `json:"max_queueing_time_ms"` // 排队超时(毫秒)
+	ID                int64  `json:"id"`
+	Resource          string `json:"resource"`             // 资源名
+	Grade             int    `json:"grade"`                // 0=QPS, 1=线程数
+	Count             int    `json:"count"`                // 阈值
+	Strategy          int    `json:"strategy"`             // 0=直接, 1=关联, 2=链路
+	ControlBehavior   int    `json:"control_behavior"`     // 0=快速失败, 1=WarmUp, 2=排队等待
+	LimitApp          string `json:"limit_app"`            // 来源应用
+	WarmUpPeriodSec   int    `json:"warm_up_period_sec"`   // 预热时长(秒)
+	MaxQueueingTimeMs int    `json:"max_queueing_time_ms"` // 排队超时(毫秒)
 }
 
 // SentinelRuleRequest 新增/修改 Sentinel 规则请求
 type SentinelRuleRequest struct {
-	Resource         string `json:"resource" binding:"required"`
-	Grade            int    `json:"grade"`
-	Count            int    `json:"count" binding:"required,gt=0"`
-	Strategy         int    `json:"strategy"`
-	ControlBehavior  int    `json:"control_behavior"`
-	LimitApp         string `json:"limit_app"`
-	WarmUpPeriodSec  int    `json:"warm_up_period_sec"`
-	MaxQueueingTimeMs int   `json:"max_queueing_time_ms"`
+	Resource          string `json:"resource" binding:"required"`
+	Grade             int    `json:"grade"`
+	Count             int    `json:"count" binding:"required,gt=0"`
+	Strategy          int    `json:"strategy"`
+	ControlBehavior   int    `json:"control_behavior"`
+	LimitApp          string `json:"limit_app"`
+	WarmUpPeriodSec   int    `json:"warm_up_period_sec"`
+	MaxQueueingTimeMs int    `json:"max_queueing_time_ms"`
 }
 
 // ==================== 告警模型 ====================
@@ -258,9 +258,9 @@ type SentinelRuleRequest struct {
 // Alarm 告警记录
 type Alarm struct {
 	ID        int64     `json:"id"`
-	Level     string    `json:"level"`     // warning/critical
-	Message   string    `json:"message"`   // 告警内容
-	Source    string    `json:"source"`    // 告警来源
+	Level     string    `json:"level"`   // warning/critical
+	Message   string    `json:"message"` // 告警内容
+	Source    string    `json:"source"`  // 告警来源
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -320,64 +320,64 @@ type BlacklistRequest struct {
 
 // MonitorMetrics 监控指标
 type MonitorMetrics struct {
-	RejectCount  int64   `json:"reject_count"`   // 被拒绝请求数
-	PassCount    int64   `json:"pass_count"`     // 通过请求数
-	AvgRt        float64 `json:"avg_rt"`         // 平均响应时间(ms)
-	QPS          float64 `json:"qps"`            // 当前QPS
-	CPUUsage     float64 `json:"cpu_usage"`      // CPU使用率(%)
-	MemUsage     float64 `json:"mem_usage"`      // 内存使用率(%)
-	ActiveConns  int64   `json:"active_conns"`   // 活跃连接数
+	RejectCount int64   `json:"reject_count"` // 被拒绝请求数
+	PassCount   int64   `json:"pass_count"`   // 通过请求数
+	AvgRt       float64 `json:"avg_rt"`       // 平均响应时间(ms)
+	QPS         float64 `json:"qps"`          // 当前QPS
+	CPUUsage    float64 `json:"cpu_usage"`    // CPU使用率(%)
+	MemUsage    float64 `json:"mem_usage"`    // 内存使用率(%)
+	ActiveConns int64   `json:"active_conns"` // 活跃连接数
 }
 
 // MiddlewareStatus 中间件状态
 type MiddlewareStatus struct {
-	Name    string `json:"name"`     // 中间件名称
-	Status  string `json:"status"`   // up/down
-	Address string `json:"address"`  // 连接地址
-	Uptime  string `json:"uptime"`   // 运行时间
+	Name    string `json:"name"`    // 中间件名称
+	Status  string `json:"status"`  // up/down
+	Address string `json:"address"` // 连接地址
+	Uptime  string `json:"uptime"`  // 运行时间
 }
 
 // SeckillStats 秒杀统计
 // [增强] 数据大屏指标补全：新增 PV/UV、转化率、秒杀请求明细、MQ 明细
 type SeckillStats struct {
-	TotalOrders  int64   `json:"total_orders"`  // 总订单数（累计创建成功）
-	SuccessRate  float64 `json:"success_rate"`  // 秒杀成功率(%)
-	QPS          float64 `json:"qps"`           // 当前系统QPS（5秒滑动平均）
-	MQBacklog    int64   `json:"mq_backlog"`    // MQ消息堆积数
-	PV           int64   `json:"pv"`            // 当日累计PV
-	UV           int64   `json:"uv"`            // 当日累计UV（按用户/IP去重）
-	ConversionRate float64 `json:"conversion_rate"` // UV→下单转化率(%)
-	SeckillRequests int64 `json:"seckill_requests"` // 秒杀请求总数（成功+失败）
-	SeckillSuccess  int64 `json:"seckill_success"`  // 秒杀成功次数
-	SeckillFail     int64 `json:"seckill_fail"`     // 秒杀失败次数
-	OrderTimeout    int64  `json:"order_timeout"`   // 超时关闭订单数
-	MQPublished     int64  `json:"mq_published"`    // MQ累计发布
-	MQConsumed      int64  `json:"mq_consumed"`     // MQ累计消费
-	MQConnected     bool   `json:"mq_connected"`    // MQ连接是否可用
+	TotalOrders     int64   `json:"total_orders"`     // 总订单数（累计创建成功）
+	SuccessRate     float64 `json:"success_rate"`     // 秒杀成功率(%)
+	QPS             float64 `json:"qps"`              // 当前系统QPS（5秒滑动平均）
+	MQBacklog       int64   `json:"mq_backlog"`       // MQ消息堆积数
+	PV              int64   `json:"pv"`               // 当日累计PV
+	UV              int64   `json:"uv"`               // 当日累计UV（按用户/IP去重）
+	ConversionRate  float64 `json:"conversion_rate"`  // UV→下单转化率(%)
+	SeckillRequests int64   `json:"seckill_requests"` // 秒杀请求总数（成功+失败）
+	SeckillSuccess  int64   `json:"seckill_success"`  // 秒杀成功次数
+	SeckillFail     int64   `json:"seckill_fail"`     // 秒杀失败次数
+	OrderTimeout    int64   `json:"order_timeout"`    // 超时关闭订单数
+	MQPublished     int64   `json:"mq_published"`     // MQ累计发布
+	MQConsumed      int64   `json:"mq_consumed"`      // MQ累计消费
+	MQConnected     bool    `json:"mq_connected"`     // MQ连接是否可用
 }
 
 // [增强] HotProduct 热销商品排行（含实时库存状态）
 type HotProduct struct {
-	ProductID    int64   `json:"product_id"`
-	ProductName  string  `json:"product_name"`
-	SoldQuantity int64   `json:"sold_quantity"`   // 累计销售件数
-	SeckillPrice float64 `json:"seckill_price"`   // 秒杀价
-	RedisStock   int     `json:"redis_stock"`     // Redis 实时库存
-	DBRemainStock int    `json:"db_remain_stock"` // DB 剩余库存
-	TotalStock   int     `json:"total_stock"`     // 总库存
-	StockPercent float64 `json:"stock_percent"`   // 库存剩余率(%)
-	Status       int8    `json:"status"`          // 1上架 0下架
+	ProductID     int64   `json:"product_id"`
+	ProductName   string  `json:"product_name"`
+	SoldQuantity  int64   `json:"sold_quantity"`   // 累计销售件数
+	SeckillPrice  float64 `json:"seckill_price"`   // 秒杀价
+	RedisStock    int     `json:"redis_stock"`     // Redis 实时库存
+	DBRemainStock int     `json:"db_remain_stock"` // DB 剩余库存
+	TotalStock    int     `json:"total_stock"`     // 总库存
+	StockPercent  float64 `json:"stock_percent"`   // 库存剩余率(%)
+	Status        int8    `json:"status"`          // 1上架 0下架
 }
 
 // [增强] InventoryItem 库存状态（数据大屏库存监控面板）
 type InventoryItem struct {
-	ProductID    int64   `json:"product_id"`
-	ProductName  string  `json:"product_name"`
-	RedisStock   int     `json:"redis_stock"`     // Redis 实时可售库存
-	DBRemainStock int    `json:"db_remain_stock"` // DB 剩余库存
-	TotalStock   int     `json:"total_stock"`
-	StockPercent float64 `json:"stock_percent"`   // 剩余率(%)
-	WarningLevel string  `json:"warning_level"`   // normal/warning/danger/soldout
+	ProductID     int64   `json:"product_id"`
+	ProductName   string  `json:"product_name"`
+	RedisStock    int     `json:"redis_stock"`     // Redis 实时可售库存
+	DBRemainStock int     `json:"db_remain_stock"` // DB 剩余库存
+	TotalStock    int     `json:"total_stock"`
+	StockPercent  float64 `json:"stock_percent"` // 剩余率(%)
+	WarningLevel  string  `json:"warning_level"` // normal/warning/danger/soldout
 }
 
 // [增强] PVUVData PV/UV 时序数据（实时流量图）
@@ -396,12 +396,12 @@ type QPSDataPoint struct {
 
 // [修复] ActivityConfigRequest 活动配置保存请求（支持动态设置限购数量等）
 type ActivityConfigRequest struct {
-	ProductID    int64  `json:"product_id" binding:"required,gt=0"`
-	LimitPerUser *int   `json:"limit_per_user"` // 单用户限购数量
-	Status       *int8  `json:"status"`         // 商品上下架状态
-	StartTime    *string `json:"start_time"`    // 活动开始时间
-	EndTime      *string `json:"end_time"`      // 活动结束时间
-	SeckillPrice *float64 `json:"seckill_price"` // 秒杀价格
+	ProductID    int64    `json:"product_id" binding:"required,gt=0"`
+	LimitPerUser *int     `json:"limit_per_user"` // 单用户限购数量
+	Status       *int8    `json:"status"`         // 商品上下架状态
+	StartTime    *string  `json:"start_time"`     // 活动开始时间
+	EndTime      *string  `json:"end_time"`       // 活动结束时间
+	SeckillPrice *float64 `json:"seckill_price"`  // 秒杀价格
 }
 
 // [修复] ActivityConfigResponse 活动配置响应
@@ -421,16 +421,16 @@ type ActivityConfigResponse struct {
 
 // [修复] AuditLog 操作审计日志，记录所有后台修改操作
 type AuditLog struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement;comment:日志ID" json:"id"`
-	UserID      int64     `gorm:"not null;index;comment:操作用户ID" json:"user_id"`
-	Username    string    `gorm:"type:varchar(64);not null;comment:操作用户名" json:"username"`
-	Action      string    `gorm:"type:varchar(64);not null;comment:操作类型(create/update/delete/export)" json:"action"`
-	Module      string    `gorm:"type:varchar(64);not null;comment:操作模块(product/order/user/sentinel)" json:"module"`
-	TargetID    string    `gorm:"type:varchar(128);comment:操作目标ID" json:"target_id"`
-	Detail      string    `gorm:"type:text;comment:操作详情JSON" json:"detail"`
-	ClientIP    string    `gorm:"type:varchar(64);comment:客户端IP" json:"client_ip"`
-	TraceID     string    `gorm:"type:varchar(128);comment:TraceID" json:"trace_id"`
-	CreatedAt   time.Time `gorm:"comment:操作时间" json:"created_at"`
+	ID        int64     `gorm:"primaryKey;autoIncrement;comment:日志ID" json:"id"`
+	UserID    int64     `gorm:"not null;index;comment:操作用户ID" json:"user_id"`
+	Username  string    `gorm:"type:varchar(64);not null;comment:操作用户名" json:"username"`
+	Action    string    `gorm:"type:varchar(64);not null;comment:操作类型(create/update/delete/export)" json:"action"`
+	Module    string    `gorm:"type:varchar(64);not null;comment:操作模块(product/order/user/sentinel)" json:"module"`
+	TargetID  string    `gorm:"type:varchar(128);comment:操作目标ID" json:"target_id"`
+	Detail    string    `gorm:"type:text;comment:操作详情JSON" json:"detail"`
+	ClientIP  string    `gorm:"type:varchar(64);comment:客户端IP" json:"client_ip"`
+	TraceID   string    `gorm:"type:varchar(128);comment:TraceID" json:"trace_id"`
+	CreatedAt time.Time `gorm:"comment:操作时间" json:"created_at"`
 }
 
 func (AuditLog) TableName() string { return "t_audit_log" }

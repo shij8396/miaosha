@@ -26,7 +26,7 @@ const (
 	MsgSystemAlert   MessageType = "system_alert"   // 系统告警
 	MsgSeckillStart  MessageType = "seckill_start"  // 秒杀活动开始
 	MsgSeckillEnd    MessageType = "seckill_end"    // 秒杀活动结束
-	MsgHeartbeat     MessageType = "heartbeat"        // 心跳
+	MsgHeartbeat     MessageType = "heartbeat"      // 心跳
 )
 
 // PushMessage WebSocket 推送消息
@@ -74,8 +74,8 @@ var upgrader = websocket.Upgrader{
 
 // Hub WebSocket 连接中心
 type Hub struct {
-	clients    map[int64]*Client    // 用户级连接（一个用户一个连接）
-	connCount  int64               // 原子计数器
+	clients    map[int64]*Client // 用户级连接（一个用户一个连接）
+	connCount  int64             // 原子计数器
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan *PushMessage

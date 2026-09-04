@@ -20,49 +20,79 @@ func NewOrderController(orderService *service.OrderService) *OrderController {
 
 func (ctl *OrderController) GetUserOrders(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	if !exists { utils.Unauthorized(c, "请先登录"); return }
+	if !exists {
+		utils.Unauthorized(c, "请先登录")
+		return
+	}
 	uid := userID.(int64)
 	var req model.OrderQueryRequest
-	if err := c.ShouldBindQuery(&req); err != nil { req.Page = 1; req.PageSize = 10 }
+	if err := c.ShouldBindQuery(&req); err != nil {
+		req.Page = 1
+		req.PageSize = 10
+	}
 	// [修复] 分页上限限制，防止超大 pageSize 导致数据库压力
 	req.PageSize = utils.ClampPageSize(req.PageSize)
 	// [修复] 传入 status 参数支持筛选
 	orders, total, err := ctl.orderService.GetUserOrders(uid, req.Page, req.PageSize, req.Status)
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	utils.Success(c, gin.H{"list": orders, "total": total, "page": req.Page, "page_size": req.PageSize})
 }
 
 func (ctl *OrderController) GetOrderDetail(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	if !exists { utils.Unauthorized(c, "请先登录"); return }
+	if !exists {
+		utils.Unauthorized(c, "请先登录")
+		return
+	}
 	uid := userID.(int64)
 	orderNo := c.Param("order_no")
 	order, err := ctl.orderService.GetOrderDetail(orderNo, uid)
-	if err != nil { utils.NotFound(c, "订单不存在"); return }
+	if err != nil {
+		utils.NotFound(c, "订单不存在")
+		return
+	}
 	utils.Success(c, order)
 }
 
 func (ctl *OrderController) CancelOrder(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	if !exists { utils.Unauthorized(c, "请先登录"); return }
+	if !exists {
+		utils.Unauthorized(c, "请先登录")
+		return
+	}
 	uid := userID.(int64)
 	var req struct {
 		OrderNo string `json:"order_no" binding:"required"`
 		Reason  string `json:"reason"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
-	if err := ctl.orderService.CancelOrder(req.OrderNo, uid, req.Reason); err != nil { utils.Error(c, 400, err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+	if err := ctl.orderService.CancelOrder(req.OrderNo, uid, req.Reason); err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
 	utils.SuccessWithMessage(c, "取消成功", nil)
 }
 
 // GetAllOrders 管理员获取所有订单
 func (ctl *OrderController) GetAllOrders(c *gin.Context) {
 	var req model.AdminOrderQueryRequest
-	if err := c.ShouldBindQuery(&req); err != nil { req.Page = 1; req.PageSize = 10 }
+	if err := c.ShouldBindQuery(&req); err != nil {
+		req.Page = 1
+		req.PageSize = 10
+	}
 	// [修复] 分页上限限制
 	req.PageSize = utils.ClampPageSize(req.PageSize)
 	orders, total, err := ctl.orderService.GetAllOrders(req.Page, req.PageSize, req.Status, req.OrderNo, req.UserID)
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	utils.Success(c, gin.H{"list": orders, "total": total, "page": req.Page, "page_size": req.PageSize})
 }
 
@@ -70,9 +100,15 @@ func (ctl *OrderController) GetAllOrders(c *gin.Context) {
 func (ctl *OrderController) ExportOrders(c *gin.Context) {
 	// 简单实现：返回 CSV 格式
 	var req model.AdminOrderQueryRequest
-	if err := c.ShouldBindQuery(&req); err != nil { req.Page = 1; req.PageSize = 10000 }
+	if err := c.ShouldBindQuery(&req); err != nil {
+		req.Page = 1
+		req.PageSize = 10000
+	}
 	orders, _, err := ctl.orderService.GetAllOrders(req.Page, req.PageSize, req.Status, req.OrderNo, req.UserID)
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment; filename=orders.csv")
 	// 写入 BOM 头以支持 Excel 正确识别 UTF-8
@@ -81,10 +117,14 @@ func (ctl *OrderController) ExportOrders(c *gin.Context) {
 	for _, o := range orders {
 		statusStr := "待支付"
 		switch o.Status {
-		case model.OrderStatusPaid: statusStr = "已支付"
-		case model.OrderStatusCancelled: statusStr = "已取消"
-		case model.OrderStatusRefunded: statusStr = "已退款"
-		case model.OrderStatusTimeout: statusStr = "超时取消"
+		case model.OrderStatusPaid:
+			statusStr = "已支付"
+		case model.OrderStatusCancelled:
+			statusStr = "已取消"
+		case model.OrderStatusRefunded:
+			statusStr = "已退款"
+		case model.OrderStatusTimeout:
+			statusStr = "超时取消"
 		}
 		c.Writer.WriteString(fmt.Sprintf("%s,%d,%s,%.2f,%d,%.2f,%s,%s\n",
 			o.OrderNo, o.UserID, o.ProductName, o.SeckillPrice, o.Quantity, o.TotalAmount, statusStr, o.CreatedAt.Format("2006-01-02 15:04:05")))
@@ -95,12 +135,19 @@ func (ctl *OrderController) ExportOrders(c *gin.Context) {
 func (ctl *OrderController) GetReconDiff(c *gin.Context) {
 	page := 1
 	pageSize := 10
-	if p, ok := c.GetQuery("page"); ok { fmt.Sscanf(p, "%d", &page) }
-	if ps, ok := c.GetQuery("page_size"); ok { fmt.Sscanf(ps, "%d", &pageSize) }
+	if p, ok := c.GetQuery("page"); ok {
+		fmt.Sscanf(p, "%d", &page)
+	}
+	if ps, ok := c.GetQuery("page_size"); ok {
+		fmt.Sscanf(ps, "%d", &pageSize)
+	}
 	// [修复] 分页上限限制
 	pageSize = utils.ClampPageSize(pageSize)
 	diffs, total, err := ctl.orderService.GetReconDiffList(page, pageSize)
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	utils.Success(c, gin.H{"list": diffs, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -109,8 +156,14 @@ func (ctl *OrderController) FixReconDiff(c *gin.Context) {
 	var req struct {
 		ID int64 `json:"id" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
-	if err := ctl.orderService.FixReconDiff(req.ID); err != nil { utils.Error(c, 400, err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+	if err := ctl.orderService.FixReconDiff(req.ID); err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
 	utils.SuccessWithMessage(c, "修复成功", nil)
 }
 
@@ -139,7 +192,10 @@ func (ctl *OrderController) ImportOrders(c *gin.Context) {
 // [修复] 验证支付回调签名，防止伪造回调
 func (ctl *OrderController) PayCallback(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	if !exists { utils.Unauthorized(c, "请先登录"); return }
+	if !exists {
+		utils.Unauthorized(c, "请先登录")
+		return
+	}
 	uid := userID.(int64)
 	var req struct {
 		OrderNo string `json:"order_no" binding:"required"`
@@ -166,7 +222,10 @@ func (ctl *OrderController) PayCallback(c *gin.Context) {
 // 已支付订单退款，归还库存
 func (ctl *OrderController) Refund(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	if !exists { utils.Unauthorized(c, "请先登录"); return }
+	if !exists {
+		utils.Unauthorized(c, "请先登录")
+		return
+	}
 	uid := userID.(int64)
 	var req struct {
 		OrderNo string `json:"order_no" binding:"required"`

@@ -22,10 +22,10 @@ func InitCluster(cfg *config.RedisConfig) error {
 		rdb = redis.NewClient(&redis.Options{
 			Addr: cfg.Addrs[0], Password: cfg.Password,
 			PoolSize: cfg.PoolSize, MinIdleConns: cfg.MinIdleConns,
-			DialTimeout: time.Duration(cfg.DialTimeout) * time.Second,
-			ReadTimeout: time.Duration(cfg.ReadTimeout) * time.Second,
+			DialTimeout:  time.Duration(cfg.DialTimeout) * time.Second,
+			ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
 			WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
-			IdleTimeout: 5 * time.Minute,
+			IdleTimeout:  5 * time.Minute,
 		})
 
 		// [修复] 添加重试机制，最多重试3次，间隔2秒，避免临时网络抖动直接 panic
@@ -66,7 +66,9 @@ func PreloadStock(ctx context.Context, productID int64, stock int) error {
 func GetStock(ctx context.Context, productID int64) (int, error) {
 	key := fmt.Sprintf("%s%d", StockKeyPrefix, productID)
 	val, err := rdb.Get(ctx, key).Int()
-	if err == redis.Nil { return 0, nil }
+	if err == redis.Nil {
+		return 0, nil
+	}
 	return val, err
 }
 
@@ -81,8 +83,12 @@ func DecrStock(ctx context.Context, productID int64, quantity int) (int, bool, e
 		return stock - tonumber(ARGV[1])
 	`
 	result, err := rdb.Eval(ctx, luaScript, []string{key}, quantity).Int()
-	if err != nil { return 0, false, fmt.Errorf("Redis库存扣减失败: %w", err) }
-	if result < 0 { return 0, false, nil }
+	if err != nil {
+		return 0, false, fmt.Errorf("Redis库存扣减失败: %w", err)
+	}
+	if result < 0 {
+		return 0, false, nil
+	}
 	return result, true, nil
 }
 
@@ -217,7 +223,9 @@ func SetProductCache(ctx context.Context, productID int64, name string, seckillP
 
 func parseFloat(v interface{}) (float64, error) {
 	s, ok := v.(string)
-	if !ok { return 0, fmt.Errorf("类型错误") }
+	if !ok {
+		return 0, fmt.Errorf("类型错误")
+	}
 	var f float64
 	_, err := fmt.Sscanf(s, "%f", &f)
 	return f, err
@@ -225,7 +233,9 @@ func parseFloat(v interface{}) (float64, error) {
 
 func parseInt(v interface{}) (int, error) {
 	s, ok := v.(string)
-	if !ok { return 0, fmt.Errorf("类型错误") }
+	if !ok {
+		return 0, fmt.Errorf("类型错误")
+	}
 	var i int
 	_, err := fmt.Sscanf(s, "%d", &i)
 	return i, err
@@ -233,7 +243,9 @@ func parseInt(v interface{}) (int, error) {
 
 func parseTime(v interface{}) (time.Time, error) {
 	s, ok := v.(string)
-	if !ok { return time.Time{}, fmt.Errorf("类型错误") }
+	if !ok {
+		return time.Time{}, fmt.Errorf("类型错误")
+	}
 	return time.Parse(time.RFC3339, s)
 }
 
@@ -394,7 +406,9 @@ func AcquireLockWithRenewal(ctx context.Context, lockKey string, lockTimeout tim
 }
 
 func Close() error {
-	if rdb != nil { return rdb.Close() }
+	if rdb != nil {
+		return rdb.Close()
+	}
 	return nil
 }
 

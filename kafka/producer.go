@@ -33,9 +33,19 @@ func InitProducer(cfg *config.KafkaConfig, log *zap.SugaredLogger) error {
 		saramaConfig.Producer.Flush.Frequency = time.Duration(cfg.Producer.LingerMs) * time.Millisecond
 		var err error
 		producer, err = sarama.NewAsyncProducer(cfg.Brokers, saramaConfig)
-		if err != nil { initErr = fmt.Errorf("创建Kafka生产者失败: %w", err); return }
+		if err != nil {
+			initErr = fmt.Errorf("创建Kafka生产者失败: %w", err)
+			return
+		}
 		go func() {
-			for { select { case err := <-producer.Errors(): if err != nil { logger.Errorw("Kafka消息发送失败", "topic", err.Msg.Topic, "error", err.Err.Error()) } } }
+			for {
+				select {
+				case err := <-producer.Errors():
+					if err != nil {
+						logger.Errorw("Kafka消息发送失败", "topic", err.Msg.Topic, "error", err.Err.Error())
+					}
+				}
+			}
 		}()
 	})
 	return initErr
@@ -73,10 +83,14 @@ func TrackBehavior(track *model.BehaviorTrack, topic string) {
 					select {
 					case producer.Input() <- dlqMsg:
 					case <-dlqCtx.Done():
-						if logger != nil { logger.Errorw("Kafka死信队列发送失败", "user_id", track.UserID) }
+						if logger != nil {
+							logger.Errorw("Kafka死信队列发送失败", "user_id", track.UserID)
+						}
 					}
 				} else {
-					if logger != nil { logger.Warnw("Kafka异步发送失败，重试中", "attempt", i+1, "user_id", track.UserID) }
+					if logger != nil {
+						logger.Warnw("Kafka异步发送失败，重试中", "attempt", i+1, "user_id", track.UserID)
+					}
 					time.Sleep(time.Duration(500*(i+1)) * time.Millisecond)
 				}
 				return
@@ -86,4 +100,9 @@ func TrackBehavior(track *model.BehaviorTrack, topic string) {
 }
 
 func GetProducer() sarama.AsyncProducer { return producer }
-func Close() error { if producer != nil { return producer.Close() }; return nil }
+func Close() error {
+	if producer != nil {
+		return producer.Close()
+	}
+	return nil
+}

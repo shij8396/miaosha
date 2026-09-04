@@ -49,8 +49,12 @@ func (s *OrderService) CreateOrder(msg map[string]interface{}) error {
 		OrderNo: orderNo, UserID: userID, ProductID: productID, ProductName: productName,
 		SeckillPrice: seckillPrice, Quantity: quantity, TotalAmount: totalAmount, Status: model.OrderStatusPending,
 	}
-	if err := dao.CreateOrder(order, cfg.MySQL.OrderTableShardCount); err != nil { return fmt.Errorf("创建订单失败: %w", err) }
-	if err := dao.DeductProductStock(productID, quantity); err != nil { return fmt.Errorf("扣减MySQL库存失败: %w", err) }
+	if err := dao.CreateOrder(order, cfg.MySQL.OrderTableShardCount); err != nil {
+		return fmt.Errorf("创建订单失败: %w", err)
+	}
+	if err := dao.DeductProductStock(productID, quantity); err != nil {
+		return fmt.Errorf("扣减MySQL库存失败: %w", err)
+	}
 	// [修复] 订单创建成功后上报 Prometheus 指标
 	monitor.IncOrderCreated()
 	return nil

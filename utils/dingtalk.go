@@ -67,7 +67,9 @@ func SendDingTalkAlert(title, content string) error {
 		resp, err := client.Post(fullURL, "application/json", bytes.NewReader(msgBytes))
 		if err != nil {
 			lastErr = err
-			if attempt < 3 { time.Sleep(time.Duration(attempt) * 500 * time.Millisecond) }
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+			}
 			continue
 		}
 		// [修复] 检查响应状态码
@@ -75,7 +77,9 @@ func SendDingTalkAlert(title, content string) error {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			lastErr = fmt.Errorf("钉钉返回非200: %d %s", resp.StatusCode, string(body))
-			if attempt < 3 { time.Sleep(time.Duration(attempt) * 500 * time.Millisecond) }
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+			}
 			continue
 		}
 		resp.Body.Close()

@@ -26,11 +26,17 @@ func (s *UserService) Register(req *model.RegisterRequest) (*model.User, error) 
 		log.Printf("[REGISTER] 查询用户失败 username=%s err=%v", req.Username, err)
 		return nil, fmt.Errorf("系统繁忙，请稍后再试")
 	}
-	if existing != nil { return nil, fmt.Errorf("用户名已存在") }
+	if existing != nil {
+		return nil, fmt.Errorf("用户名已存在")
+	}
 	hashedPassword, err := utils.HashPassword(req.Password)
-	if err != nil { return nil, fmt.Errorf("密码加密失败: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("密码加密失败: %w", err)
+	}
 	user := &model.User{Username: req.Username, Password: hashedPassword, Nickname: req.Nickname, Phone: req.Phone, Status: 1}
-	if err := dao.CreateUser(user); err != nil { return nil, fmt.Errorf("创建用户失败: %w", err) }
+	if err := dao.CreateUser(user); err != nil {
+		return nil, fmt.Errorf("创建用户失败: %w", err)
+	}
 	return user, nil
 }
 
@@ -43,10 +49,16 @@ func (s *UserService) Login(req *model.LoginRequest) (*model.LoginResponse, erro
 		}
 		return nil, fmt.Errorf("用户名或密码错误")
 	}
-	if user.Status != 1 { return nil, fmt.Errorf("账号已被禁用") }
-	if !utils.CheckPassword(req.Password, user.Password) { return nil, fmt.Errorf("用户名或密码错误") }
+	if user.Status != 1 {
+		return nil, fmt.Errorf("账号已被禁用")
+	}
+	if !utils.CheckPassword(req.Password, user.Password) {
+		return nil, fmt.Errorf("用户名或密码错误")
+	}
 	token, err := s.jwtManager.GenerateToken(user.ID, user.Username, user.Role) // [修复] 传递角色信息到JWT
-	if err != nil { return nil, fmt.Errorf("Token生成失败: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("Token生成失败: %w", err)
+	}
 	return &model.LoginResponse{Token: token, UserID: user.ID, Username: user.Username, Nickname: user.Nickname, Role: user.Role}, nil
 }
 

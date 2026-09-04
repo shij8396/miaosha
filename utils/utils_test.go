@@ -152,3 +152,126 @@ func TestGetOrderTableName(t *testing.T) {
 		t.Fatalf("分表名称格式异常: %s", table1)
 	}
 }
+
+// TestClampPageSize 测试分页大小上限限制
+func TestClampPageSize(t *testing.T) {
+	// 非法值（<=0）回退默认 10
+	if got := ClampPageSize(0); got != 10 {
+		t.Fatalf("pageSize=0 应回退 10，实际 %d", got)
+	}
+	if got := ClampPageSize(-5); got != 10 {
+		t.Fatalf("pageSize=-5 应回退 10，实际 %d", got)
+	}
+	// 正常值原样返回
+	if got := ClampPageSize(20); got != 20 {
+		t.Fatalf("pageSize=20 应原样返回，实际 %d", got)
+	}
+	// 超过上限钳制到 MaxPageSize
+	if got := ClampPageSize(1000); got != MaxPageSize {
+		t.Fatalf("pageSize=1000 应钳制到 %d，实际 %d", MaxPageSize, got)
+	}
+}
+
+// TestDingTalkSign 测试钉钉机器人签名（HMAC-SHA256 + Base64）
+func TestDingTalkSign(t *testing.T) {
+	secret := "SEC123456"
+	timestamp := int64(1700000000000)
+	sign, err := DingTalkSign(secret, timestamp)
+	if err != nil {
+		t.Fatalf("签名失败: %v", err)
+	}
+	if sign == "" {
+		t.Fatal("签名为空")
+	}
+	// 相同输入应得到相同签名（确定性）
+	sign2, _ := DingTalkSign(secret, timestamp)
+	if sign != sign2 {
+		t.Fatal("相同输入应得到相同签名")
+	}
+	// 不同时间戳应得到不同签名
+	sign3, _ := DingTalkSign(secret, timestamp+1)
+	if sign == sign3 {
+		t.Fatal("不同时间戳应得到不同签名")
+	}
+	// 与已知参考值比对（防止算法回归）
+	// HMAC-SHA256(timestamp+"\n"+secret, secret) 的 Base64
+	expected := "FDly9FmQpdYyYkNLryV5/4kGkNb4cCTG2VhnJLEn0mA="
+	if sign != expected {
+		t.Fatalf("签名与参考值不符，期望 %s，实际 %s", expected, sign)
+	}
+}
+
+// TestToJSON 测试 JSON 序列化：中文不做 HTML 转义、无多余换行
+func TestToJSON(t *testing.T) {
+	// 1. 中文不应被转义成 \uXXXX
+	s := ToJSON(map[string]interface{}{"name": "秒杀商品", "price": 9.9})
+	if s != `{"name":"秒杀商品","price":9.9}` {
+		t.Fatalf("ToJSON 中文转义或格式异常: %s", s)
+	}
+	// 2. 不应包含尾部换行符（json.Encoder.Encode 默认追加 \n）
+	if s[len(s)-1] == '\n' {
+		t.Fatal("ToJSON 不应包含尾部换行符")
+	}
+	// 3. 无 HTML 转义：< > & 应原样保留
+	s2 := ToJSON("a<b&c>d")
+	if s2 != `"a<b&c>d"` {
+		t.Fatalf("ToJSON 不应转义 HTML 字符: %s", s2)
+	}
+}
+
+// TestFromJSON 测试 JSON 反序列化
+func TestFromJSON(t *testing.T) {
+	type item struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	}
+	var got item
+	if err := FromJSON(`{"id":1,"name":"测试"}`, &got); err != nil {
+		t.Fatalf("FromJSON 失败: %v", err)
+	}
+	if got.ID != 1 || got.Name != "测试" {
+		t.Fatalf("FromJSON 结果异常: %+v", got)
+	}
+}
+
+// TestBufferedSnowflake 测试带缓冲的雪花 ID 生成（并发安全 + 唯一性）
+func TestBufferedSnowflake(t *testing.T) {
+	sf, err := NewSnowflake(2)
+	if err != nil {
+		t.Fatalf("雪花初始化失败: %v", err)
+	}
+	bs := NewBufferedSnowflake(sf, 64)
+	defer bs.Close()
+
+	// 并发生成 1000 个 ID，验证无重复、无错误
+	const n = 1000
+	ids := make(chan int64, n)
+	errCh := make(chan error, 1)
+	for i := 0; i < 8; i++ {
+		go func() {
+			for j := 0; j < n/8; j++ {
+				id, err := bs.NextID()
+				if err != nil {
+					select {
+					case errCh <- err:
+					default:
+					}
+					return
+				}
+				ids <- id
+			}
+		}()
+	}
+	seen := make(map[int64]bool, n)
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-errCh:
+			t.Fatalf("ID 生成失败: %v", err)
+		case id := <-ids:
+			if seen[id] {
+				t.Fatalf("ID 重复: %d", id)
+			}
+			seen[id] = true
+		}
+	}
+}

@@ -23,14 +23,23 @@ func (ctl *AuditController) GetAuditLogs(c *gin.Context) {
 	pageSize := 10
 	var operatorID int64
 	var action string
-	if p, ok := c.GetQuery("page"); ok { fmt.Sscanf(p, "%d", &page) }
-	if ps, ok := c.GetQuery("page_size"); ok { fmt.Sscanf(ps, "%d", &pageSize) }
+	if p, ok := c.GetQuery("page"); ok {
+		fmt.Sscanf(p, "%d", &page)
+	}
+	if ps, ok := c.GetQuery("page_size"); ok {
+		fmt.Sscanf(ps, "%d", &pageSize)
+	}
 	// [修复] 分页上限限制
 	pageSize = utils.ClampPageSize(pageSize)
-	if oid, ok := c.GetQuery("operator_id"); ok { fmt.Sscanf(oid, "%d", &operatorID) }
+	if oid, ok := c.GetQuery("operator_id"); ok {
+		fmt.Sscanf(oid, "%d", &operatorID)
+	}
 	action = c.Query("action")
 	list, total, err := ctl.auditService.GetAuditLogs(page, pageSize, operatorID, action)
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	utils.Success(c, gin.H{"list": list, "total": total, "page": page, "page_size": pageSize})
 }
 

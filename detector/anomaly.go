@@ -23,8 +23,8 @@ type BehaviorSample struct {
 type UserProfile struct {
 	UserID       int64
 	Samples      []BehaviorSample // 最近 N 次行为采样
-	WindowSize   int             // 窗口大小
-	Idx          int             // 环形缓冲区写入位置
+	WindowSize   int              // 窗口大小
+	Idx          int              // 环形缓冲区写入位置
 	mu           sync.Mutex
 	lastIP       string
 	lastTime     time.Time
@@ -34,12 +34,12 @@ type UserProfile struct {
 
 // AnomalyConfig 异常检测配置
 type AnomalyConfig struct {
-	WindowSize         int     // 滑动窗口采样数（默认 20）
-	FreqThreshold      float64 // 请求频率 Z-Score 阈值（默认 3.0）
-	IntervalThreshold  float64 // 间隔方差 Z-Score 阈值（默认 2.5）
-	SuccessThreshold   float64 // 成功率异常阈值（默认 0.3，即成功率 < 30%）
-	BlockDuration      time.Duration // 自动封禁时长
-	MinSamplesForDetect int    // 最少采样数才开始检测（默认 5）
+	WindowSize          int           // 滑动窗口采样数（默认 20）
+	FreqThreshold       float64       // 请求频率 Z-Score 阈值（默认 3.0）
+	IntervalThreshold   float64       // 间隔方差 Z-Score 阈值（默认 2.5）
+	SuccessThreshold    float64       // 成功率异常阈值（默认 0.3，即成功率 < 30%）
+	BlockDuration       time.Duration // 自动封禁时长
+	MinSamplesForDetect int           // 最少采样数才开始检测（默认 5）
 }
 
 // DefaultConfig 默认配置：适合秒杀场景的保守参数
@@ -69,12 +69,12 @@ type AnomalyDetector struct {
 	mu       sync.RWMutex
 
 	// 全局统计（用于 Z-Score 基准）
-	globalFreqMean    float64
-	globalFreqStd     float64
+	globalFreqMean     float64
+	globalFreqStd      float64
 	globalIntervalMean float64
-	globalIntervalStd float64
-	globalStatsMu     sync.RWMutex
-	globalStatsCount  int
+	globalIntervalStd  float64
+	globalStatsMu      sync.RWMutex
+	globalStatsCount   int
 }
 
 // NewAnomalyDetector 创建检测引擎

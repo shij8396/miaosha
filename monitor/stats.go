@@ -52,40 +52,40 @@ type StatsHotItem struct {
 	ProductID    int64  `json:"product_id"`
 	ProductName  string `json:"product_name"`
 	SuccessCount int64  `json:"success_count"` // 秒杀成功次数
-	SoldQuantity int64  `json:"sold_quantity"`  // 累计销售件数
+	SoldQuantity int64  `json:"sold_quantity"` // 累计销售件数
 }
 
 // PVUVSnapshot PV/UV 与流量快照
 type PVUVSnapshot struct {
-	PV          int64   `json:"pv"`           // 当日累计 PV
-	UV          int64   `json:"uv"`           // 当日累计 UV
-	QPS         float64 `json:"qps"`          // 当前 QPS（5 秒滑动平均）
+	PV          int64   `json:"pv"`            // 当日累计 PV
+	UV          int64   `json:"uv"`            // 当日累计 UV
+	QPS         float64 `json:"qps"`           // 当前 QPS（5 秒滑动平均）
 	PVPerSecond []int64 `json:"pv_per_second"` // 最近 60 秒每秒请求数（图表用）
 }
 
 const (
-	statsHistoryLen  = 120 // QPS 历史环形缓冲长度（每秒 1 点，约 2 分钟）
-	statsAlarmMax    = 100 // 告警环形缓冲容量
-	statsAlarmDedup  = 30 * time.Second
-	statsUvMaxTrack  = 500000 // UV 去重集合容量上限（防内存膨胀，超出后 UV 改为近似计数）
+	statsHistoryLen = 120 // QPS 历史环形缓冲长度（每秒 1 点，约 2 分钟）
+	statsAlarmMax   = 100 // 告警环形缓冲容量
+	statsAlarmDedup = 30 * time.Second
+	statsUvMaxTrack = 500000 // UV 去重集合容量上限（防内存膨胀，超出后 UV 改为近似计数）
 )
 
 type statsEngine struct {
 	mu sync.Mutex
 
 	// PV/UV（按日）
-	pv      int64 // atomic
-	uv      int64 // atomic
-	uvSet   map[string]struct{}
-	uvDate  string // 当前统计日期 YYYY-MM-DD，跨天重置
+	pv     int64 // atomic
+	uv     int64 // atomic
+	uvSet  map[string]struct{}
+	uvDate string // 当前统计日期 YYYY-MM-DD，跨天重置
 
 	// QPS：每秒请求计数，由 ticker 每秒滚入历史
-	reqThisSecond int64 // atomic
-	reqTotal      int64 // atomic 累计请求数
-	reqTotalMs    atomicFloat64 // 累计请求总耗时(ms)
-	reqLatencyCount atomicInt64 // 有耗时的请求数
-	qpsHistory    []float64
-	qpsTimeRing   []string
+	reqThisSecond   int64         // atomic
+	reqTotal        int64         // atomic 累计请求数
+	reqTotalMs      atomicFloat64 // 累计请求总耗时(ms)
+	reqLatencyCount atomicInt64   // 有耗时的请求数
+	qpsHistory      []float64
+	qpsTimeRing     []string
 
 	// 热销商品
 	hot map[int64]*StatsHotItem

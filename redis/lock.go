@@ -25,28 +25,38 @@ func (l *DistLock) Lock(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		ok, err := rdb.SetNX(ctx, l.key, l.value, l.expire).Result()
-		if err != nil { return fmt.Errorf("分布式锁获取失败: %w", err) }
+		if err != nil {
+			return fmt.Errorf("分布式锁获取失败: %w", err)
+		}
 		if ok {
 			renewCtx, cancel := context.WithCancel(context.Background())
 			l.cancel = cancel
 			go l.renewLoop(renewCtx)
 			return nil
 		}
-		if time.Now().After(deadline) { return fmt.Errorf("获取分布式锁超时: %s", l.key) }
+		if time.Now().After(deadline) {
+			return fmt.Errorf("获取分布式锁超时: %s", l.key)
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
 func (l *DistLock) Unlock(ctx context.Context) error {
-	if l.cancel != nil { l.cancel() }
+	if l.cancel != nil {
+		l.cancel()
+	}
 	luaScript := `
 		if redis.call('GET', KEYS[1]) == ARGV[1] then
 			return redis.call('DEL', KEYS[1])
 		else return 0 end
 	`
 	result, err := rdb.Eval(ctx, luaScript, []string{l.key}, l.value).Int()
-	if err != nil { return fmt.Errorf("分布式锁释放失败: %w", err) }
-	if result == 0 { return fmt.Errorf("锁已被释放或过期") }
+	if err != nil {
+		return fmt.Errorf("分布式锁释放失败: %w", err)
+	}
+	if result == 0 {
+		return fmt.Errorf("锁已被释放或过期")
+	}
 	return nil
 }
 
@@ -55,7 +65,8 @@ func (l *DistLock) renewLoop(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ctx.Done(): return
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
 			luaScript := `
 				if redis.call('GET', KEYS[1]) == ARGV[1] then

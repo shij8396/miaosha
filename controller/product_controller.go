@@ -35,19 +35,34 @@ func NewProductController(productService *service.ProductService) *ProductContro
 // @Router       /api/v1/product [post]
 func (ctl *ProductController) CreateProduct(c *gin.Context) {
 	var req model.CreateProductRequest
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
 	product, err := ctl.productService.CreateProduct(&req)
-	if err != nil { utils.Error(c, 400, err.Error()); return }
+	if err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
 	utils.SuccessWithMessage(c, "创建成功", product)
 }
 
 func (ctl *ProductController) UpdateProduct(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil { utils.BadRequest(c, "商品ID格式错误"); return }
+	if err != nil {
+		utils.BadRequest(c, "商品ID格式错误")
+		return
+	}
 	var req model.UpdateProductRequest
-	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
-	if err := ctl.productService.UpdateProduct(id, &req); err != nil { utils.Error(c, 400, err.Error()); return }
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+	if err := ctl.productService.UpdateProduct(id, &req); err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
 	utils.SuccessWithMessage(c, "更新成功", nil)
 }
 
@@ -68,7 +83,10 @@ func (ctl *ProductController) GetProductList(c *gin.Context) {
 	// [修复] 分页上限限制
 	pageSize = utils.ClampPageSize(pageSize)
 	products, total, err := ctl.productService.GetProductList(page, pageSize)
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	utils.Success(c, gin.H{"list": products, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -83,7 +101,10 @@ func (ctl *ProductController) GetProductList(c *gin.Context) {
 // @Router       /api/v1/product/active [get]
 func (ctl *ProductController) GetActiveProducts(c *gin.Context) {
 	products, err := ctl.productService.GetActiveProductsWithSKU()
-	if err != nil { utils.InternalError(c, err.Error()); return }
+	if err != nil {
+		utils.InternalError(c, err.Error())
+		return
+	}
 	utils.Success(c, products)
 }
 
@@ -102,9 +123,15 @@ func (ctl *ProductController) GetActiveProducts(c *gin.Context) {
 func (ctl *ProductController) GetProductDetail(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil { utils.BadRequest(c, "商品ID格式错误"); return }
+	if err != nil {
+		utils.BadRequest(c, "商品ID格式错误")
+		return
+	}
 	product, err := ctl.productService.GetProductDetail(id)
-	if err != nil { utils.NotFound(c, "商品不存在"); return }
+	if err != nil {
+		utils.NotFound(c, "商品不存在")
+		return
+	}
 	utils.Success(c, product)
 }
 

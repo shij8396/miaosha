@@ -97,13 +97,17 @@ func CreateUser(user *model.User) error { return GetWriteDB().Create(user).Error
 func GetUserByUsername(username string) (*model.User, error) {
 	var user model.User
 	err := GetWriteDB().Where("username = ?", username).First(&user).Error
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return &user, nil
 }
 func GetUserByID(userID int64) (*model.User, error) {
 	var user model.User
 	err := GetReadDB().Where("id = ?", userID).First(&user).Error
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return &user, nil
 }
 
@@ -115,14 +119,18 @@ func UpdateProduct(id int64, updates map[string]interface{}) error {
 func GetProductByID(productID int64) (*model.Product, error) {
 	var product model.Product
 	err := GetReadDB().Where("id = ?", productID).First(&product).Error
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return &product, nil
 }
 func GetProductList(page, pageSize int) ([]model.Product, int64, error) {
 	var products []model.Product
 	var total int64
 	offset := (page - 1) * pageSize
-	if err := GetReadDB().Model(&model.Product{}).Count(&total).Error; err != nil { return nil, 0, err }
+	if err := GetReadDB().Model(&model.Product{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	err := GetReadDB().Offset(offset).Limit(pageSize).Order("id DESC").Find(&products).Error
 	return products, total, err
 }
@@ -135,8 +143,12 @@ func GetActiveProducts() ([]model.Product, error) {
 }
 func DeductProductStock(productID int64, quantity int) error {
 	result := GetWriteDB().Model(&model.Product{}).Where("id = ? AND remain_stock >= ?", productID, quantity).Update("remain_stock", gorm.Expr("remain_stock - ?", quantity))
-	if result.Error != nil { return result.Error }
-	if result.RowsAffected == 0 { return fmt.Errorf("库存不足") }
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("库存不足")
+	}
 	return nil
 }
 func RollbackProductStock(productID int64, quantity int) error {
@@ -150,8 +162,12 @@ func ReplaceProductSKUs(productID int64, skus []*model.ProductSKU) error {
 		if err := tx.Where("product_id = ?", productID).Delete(&model.ProductSKU{}).Error; err != nil {
 			return err
 		}
-		if len(skus) == 0 { return nil }
-		for _, s := range skus { s.ProductID = productID }
+		if len(skus) == 0 {
+			return nil
+		}
+		for _, s := range skus {
+			s.ProductID = productID
+		}
 		return tx.Create(&skus).Error
 	})
 }
@@ -162,10 +178,14 @@ func GetProductSKUs(productID int64) ([]model.ProductSKU, error) {
 }
 func GetProductSKUsMap(productIDs []int64) (map[int64][]model.ProductSKU, error) {
 	result := make(map[int64][]model.ProductSKU)
-	if len(productIDs) == 0 { return result, nil }
+	if len(productIDs) == 0 {
+		return result, nil
+	}
 	var skus []model.ProductSKU
 	err := GetReadDB().Where("product_id IN ? AND status = 1", productIDs).Order("id ASC").Find(&skus).Error
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	for _, s := range skus {
 		result[s.ProductID] = append(result[s.ProductID], s)
 	}
@@ -174,7 +194,9 @@ func GetProductSKUsMap(productIDs []int64) (map[int64][]model.ProductSKU, error)
 func GetSKUByID(skuID int64) (*model.ProductSKU, error) {
 	var sku model.ProductSKU
 	err := GetReadDB().Where("id = ? AND status = 1", skuID).First(&sku).Error
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return &sku, nil
 }
 
@@ -207,7 +229,9 @@ func GetOrderByOrderNo(orderNo string, userID int64, shardCount int) (*model.Ord
 	var order model.Order
 	tableName := utils.GetOrderTableName(userID, shardCount)
 	err := GetReadDB().Table(tableName).Where("order_no = ?", orderNo).First(&order).Error
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return &order, nil
 }
 func GetUserOrders(userID int64, page, pageSize, shardCount int, status string) ([]model.Order, int64, error) {
@@ -229,7 +253,9 @@ func GetUserOrders(userID int64, page, pageSize, shardCount int, status string) 
 	case "timeout":
 		db = db.Where("status = ?", model.OrderStatusTimeout)
 	}
-	if err := db.Count(&total).Error; err != nil { return nil, 0, err }
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	err := db.Offset(offset).Limit(pageSize).Order("id DESC").Find(&orders).Error
 	return orders, total, err
 }
@@ -281,7 +307,9 @@ func GetReconDiffList(page, pageSize int) ([]model.ReconDiff, int64, error) {
 	var diffs []model.ReconDiff
 	var total int64
 	offset := (page - 1) * pageSize
-	if err := GetReadDB().Model(&model.ReconDiff{}).Count(&total).Error; err != nil { return nil, 0, err }
+	if err := GetReadDB().Model(&model.ReconDiff{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	err := GetReadDB().Offset(offset).Limit(pageSize).Order("id DESC").Find(&diffs).Error
 	return diffs, total, err
 }
@@ -298,7 +326,9 @@ func GetUserList(page, pageSize int) ([]model.User, int64, error) {
 	var users []model.User
 	var total int64
 	offset := (page - 1) * pageSize
-	if err := GetReadDB().Model(&model.User{}).Count(&total).Error; err != nil { return nil, 0, err }
+	if err := GetReadDB().Model(&model.User{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	err := GetReadDB().Offset(offset).Limit(pageSize).Order("id DESC").Find(&users).Error
 	return users, total, err
 }
@@ -368,7 +398,9 @@ func GetAllOrders(page, pageSize int, status *int8, orderNo string, userID *int6
 			query = query.Where("user_id = ?", *userID)
 		}
 		var shardTotal int64
-		if err := query.Count(&shardTotal).Error; err != nil { return nil, 0, err }
+		if err := query.Count(&shardTotal).Error; err != nil {
+			return nil, 0, err
+		}
 		total += shardTotal
 	}
 
@@ -401,7 +433,9 @@ func GetAllOrders(page, pageSize int, status *int8, orderNo string, userID *int6
 
 		unionSQL := ""
 		for idx, q := range unionQueries {
-			if idx > 0 { unionSQL += " UNION ALL " }
+			if idx > 0 {
+				unionSQL += " UNION ALL "
+			}
 			unionSQL += q
 		}
 		unionSQL += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
@@ -421,7 +455,9 @@ func GetTotalOrderCount() (int64, error) {
 	for i := 0; i < 16; i++ {
 		tableName := fmt.Sprintf("t_order_%d", i)
 		var shardTotal int64
-		if err := GetReadDB().Table(tableName).Count(&shardTotal).Error; err != nil { return 0, err }
+		if err := GetReadDB().Table(tableName).Count(&shardTotal).Error; err != nil {
+			return 0, err
+		}
 		total += shardTotal
 	}
 	return total, nil

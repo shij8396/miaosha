@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/miaosha/config"
 	"github.com/miaosha/controller"
 	"github.com/miaosha/cron"
@@ -29,6 +27,8 @@ import (
 	"github.com/miaosha/singleflight"
 	"github.com/miaosha/utils"
 	ws "github.com/miaosha/websocket"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	_ "github.com/miaosha/docs" // Swagger 文档
 )
@@ -55,7 +55,9 @@ import (
 
 func main() {
 	cfg, err := config.LoadConfig("")
-	if err != nil { panic(fmt.Sprintf("配置加载失败: %v", err)) }
+	if err != nil {
+		panic(fmt.Sprintf("配置加载失败: %v", err))
+	}
 
 	if err := log.Init(log.Config{
 		Level: cfg.Log.Level, Format: cfg.Log.Format, Output: cfg.Log.Output,
@@ -67,20 +69,42 @@ func main() {
 	defer log.Sync()
 	log.L().Info("====== 企业级秒杀系统启动中 ======")
 
-	if err := dao.InitDB(&cfg.MySQL); err != nil { log.L().Fatalw("MySQL初始化失败", "error", err) }
+	if err := dao.InitDB(&cfg.MySQL); err != nil {
+		log.L().Fatalw("MySQL初始化失败", "error", err)
+	}
 	log.L().Info("MySQL主从+读写分离+分表初始化完成")
 
-	if err := redisClient.InitCluster(&cfg.Redis); err != nil { log.L().Fatalw("Redis Cluster初始化失败", "error", err) }
+	if err := redisClient.InitCluster(&cfg.Redis); err != nil {
+		log.L().Fatalw("Redis Cluster初始化失败", "error", err)
+	}
 	defer redisClient.Close()
 	log.L().Info("Redis Cluster集群初始化完成")
 
-	if err := mq.Init(&cfg.RabbitMQ); err != nil { log.L().Warnw("RabbitMQ初始化失败，MQ功能不可用", "error", err) } else { defer mq.Close(); log.L().Info("RabbitMQ镜像队列+延迟队列+死信队列初始化完成") }
+	if err := mq.Init(&cfg.RabbitMQ); err != nil {
+		log.L().Warnw("RabbitMQ初始化失败，MQ功能不可用", "error", err)
+	} else {
+		defer mq.Close()
+		log.L().Info("RabbitMQ镜像队列+延迟队列+死信队列初始化完成")
+	}
 
-	if err := kafka.InitProducer(&cfg.Kafka, log.L()); err != nil { log.L().Warnw("Kafka生产者初始化失败", "error", err) } else { defer kafka.Close(); log.L().Info("Kafka生产者初始化完成") }
+	if err := kafka.InitProducer(&cfg.Kafka, log.L()); err != nil {
+		log.L().Warnw("Kafka生产者初始化失败", "error", err)
+	} else {
+		defer kafka.Close()
+		log.L().Info("Kafka生产者初始化完成")
+	}
 
-	if err := etcd.Init(&cfg.Etcd); err != nil { log.L().Warnw("Etcd初始化失败", "error", err) } else { defer etcd.Close(); etcd.RegisterService(&cfg.Server, &cfg.Etcd); log.L().Info("Etcd服务注册发现初始化完成") }
+	if err := etcd.Init(&cfg.Etcd); err != nil {
+		log.L().Warnw("Etcd初始化失败", "error", err)
+	} else {
+		defer etcd.Close()
+		etcd.RegisterService(&cfg.Server, &cfg.Etcd)
+		log.L().Info("Etcd服务注册发现初始化完成")
+	}
 
-	if err := sentinel.Init(&cfg.Sentinel); err != nil { log.L().Warnw("Sentinel初始化失败", "error", err) }
+	if err := sentinel.Init(&cfg.Sentinel); err != nil {
+		log.L().Warnw("Sentinel初始化失败", "error", err)
+	}
 	log.L().Info("Sentinel-Go流量防护初始化完成")
 
 	monitor.Init()
@@ -89,7 +113,9 @@ func main() {
 
 	jwtManager := utils.NewJWTManager(cfg.JWT.Secret, cfg.JWT.ExpireHours, cfg.JWT.Issuer)
 	sf, err := utils.NewSnowflake(int64(cfg.Server.Port) % 1024)
-	if err != nil { log.L().Fatalw("雪花算法初始化失败", "error", err) }
+	if err != nil {
+		log.L().Fatalw("雪花算法初始化失败", "error", err)
+	}
 	// [速度优化] 缓冲通道预生成 ID，高并发下 NextID() 无锁竞争
 	idGen := utils.NewBufferedSnowflake(sf, 1024)
 	log.L().Info("Snowflake ID预生成器初始化完成（缓冲区1024）")
@@ -125,7 +151,7 @@ func main() {
 	sentinelController := controller.NewSentinelController(sentinelService)
 	monitorController := controller.NewMonitorController(monitorService, anomalyDetector, wsHub)
 	activityController := controller.NewActivityController(activityService) // [修复] 秒杀活动配置控制器
-	auditController := controller.NewAuditController(auditService)       // [修复] 审计日志控制器
+	auditController := controller.NewAuditController(auditService)          // [修复] 审计日志控制器
 
 	mq.StartOrderConsumer(orderService)
 	mq.StartDeadLetterConsumer(orderService)
@@ -189,10 +215,10 @@ func main() {
 		api.GET("/product/active", productController.GetActiveProducts)
 		api.GET("/product/:id", productController.GetProductDetail)
 		api.POST("/product/batch", productController.BatchImportProducts) // [修复] 商品批量导入
-		api.POST("/product/upload", productController.UploadImage)       // [修复] 商品图片上传
+		api.POST("/product/upload", productController.UploadImage)        // [修复] 商品图片上传
 		api.POST("/seckill", seckillController.Seckill)
-		api.GET("/seckill/path", seckillController.GetSeckillPath)       // [创新] 秒杀地址隐藏
-		api.GET("/seckill/captcha", seckillController.GetCaptcha)        // [创新] 数学验证码
+		api.GET("/seckill/path", seckillController.GetSeckillPath)          // [创新] 秒杀地址隐藏
+		api.GET("/seckill/captcha", seckillController.GetCaptcha)           // [创新] 数学验证码
 		api.GET("/seckill/purchased", seckillController.GetPurchasedCounts) // [修复] 用户已购数量（恢复限购按钮状态）
 		api.GET("/order/list", orderController.GetUserOrders)
 		api.GET("/order/:order_no", orderController.GetOrderDetail)

@@ -17,7 +17,9 @@ import (
 func TraceIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		traceID := c.GetHeader("X-Trace-ID")
-		if traceID == "" { traceID = utils.GenerateTraceID() }
+		if traceID == "" {
+			traceID = utils.GenerateTraceID()
+		}
 		c.Set(utils.TraceIDKey, traceID)
 		c.Header("X-Trace-ID", traceID)
 		c.Next()
@@ -47,13 +49,28 @@ func RequestLogMiddleware() gin.HandlerFunc {
 func AuthMiddleware(jwtManager *utils.JWTManager) gin.HandlerFunc {
 	whiteList := map[string]bool{"/api/v1/user/login": true, "/api/v1/user/register": true, "/metrics": true, "/health": true}
 	return func(c *gin.Context) {
-		if whiteList[c.Request.URL.Path] { c.Next(); return }
+		if whiteList[c.Request.URL.Path] {
+			c.Next()
+			return
+		}
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" { utils.Unauthorized(c, "未提供认证Token"); c.Abort(); return }
+		if authHeader == "" {
+			utils.Unauthorized(c, "未提供认证Token")
+			c.Abort()
+			return
+		}
 		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" { utils.Unauthorized(c, "Token格式错误"); c.Abort(); return }
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			utils.Unauthorized(c, "Token格式错误")
+			c.Abort()
+			return
+		}
 		claims, err := jwtManager.ParseToken(parts[1])
-		if err != nil { utils.Unauthorized(c, "Token验证失败"); c.Abort(); return }
+		if err != nil {
+			utils.Unauthorized(c, "Token验证失败")
+			c.Abort()
+			return
+		}
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		// [修复] 兼容旧版Token（无role字段）：清空浏览器缓存后重新登录即可获取新版Token
@@ -139,7 +156,9 @@ func MetricsMiddleware() gin.HandlerFunc {
 		// [增强] 实时统计引擎埋点：接口耗时（用于平均响应时间）
 		monitor.RecordRequestLatency(float64(time.Since(start).Milliseconds()))
 		monitor.ObserveHTTPRequestDuration(method, path, time.Since(start).Seconds())
-		if c.Writer.Status() >= 400 { monitor.IncHTTPErrorTotal(method, path, fmt.Sprintf("%d", c.Writer.Status())) }
+		if c.Writer.Status() >= 400 {
+			monitor.IncHTTPErrorTotal(method, path, fmt.Sprintf("%d", c.Writer.Status()))
+		}
 		// [增强] PV/UV 埋点：登录用户取 user_id（AuthMiddleware 在 Next 内已写入），未登录取客户端IP
 		// 仅统计业务 API，排除 /metrics /health 等基础设施端点
 		if strings.HasPrefix(path, "/api/") {

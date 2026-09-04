@@ -20,7 +20,9 @@ func buildSKUs(productID int64, inputs []model.SKUInput) []*model.ProductSKU {
 	skus := make([]*model.ProductSKU, 0, len(inputs))
 	for _, in := range inputs {
 		specJSON, err := json.Marshal(in.Spec)
-		if err != nil || len(in.Spec) == 0 { continue }
+		if err != nil || len(in.Spec) == 0 {
+			continue
+		}
 		skus = append(skus, &model.ProductSKU{
 			ProductID: productID, Spec: string(specJSON), Price: in.Price, Stock: in.Stock, Status: 1,
 		})
@@ -30,17 +32,27 @@ func buildSKUs(productID int64, inputs []model.SKUInput) []*model.ProductSKU {
 
 func (s *ProductService) CreateProduct(req *model.CreateProductRequest) (*model.Product, error) {
 	startTime, err := time.ParseInLocation("2006-01-02 15:04:05", req.StartTime, time.Local)
-	if err != nil { return nil, fmt.Errorf("活动开始时间格式错误") }
+	if err != nil {
+		return nil, fmt.Errorf("活动开始时间格式错误")
+	}
 	endTime, err := time.ParseInLocation("2006-01-02 15:04:05", req.EndTime, time.Local)
-	if err != nil { return nil, fmt.Errorf("活动结束时间格式错误") }
-	if endTime.Before(startTime) { return nil, fmt.Errorf("结束时间不能早于开始时间") }
-	if req.LimitPerUser <= 0 { req.LimitPerUser = 1 }
+	if err != nil {
+		return nil, fmt.Errorf("活动结束时间格式错误")
+	}
+	if endTime.Before(startTime) {
+		return nil, fmt.Errorf("结束时间不能早于开始时间")
+	}
+	if req.LimitPerUser <= 0 {
+		req.LimitPerUser = 1
+	}
 	product := &model.Product{
 		Name: req.Name, Description: req.Description, Price: req.Price, SeckillPrice: req.SeckillPrice,
 		TotalStock: req.TotalStock, RemainStock: req.TotalStock, StartTime: startTime, EndTime: endTime,
 		Status: 1, ImageURL: req.ImageURL, LimitPerUser: req.LimitPerUser,
 	}
-	if err := dao.CreateProduct(product); err != nil { return nil, fmt.Errorf("创建商品失败: %w", err) }
+	if err := dao.CreateProduct(product); err != nil {
+		return nil, fmt.Errorf("创建商品失败: %w", err)
+	}
 	// [修复] 保存商品配置（SKU）：不同配置对应不同价格
 	if len(req.SKUs) > 0 {
 		if err := dao.ReplaceProductSKUs(product.ID, buildSKUs(product.ID, req.SKUs)); err != nil {
@@ -55,12 +67,22 @@ func (s *ProductService) CreateProduct(req *model.CreateProductRequest) (*model.
 func (s *ProductService) UpdateProduct(id int64, req *model.UpdateProductRequest) error {
 	// [修复] 先获取旧商品信息，避免误重置 remain_stock
 	oldProduct, err := dao.GetProductByID(id)
-	if err != nil { return fmt.Errorf("商品不存在: %w", err) }
+	if err != nil {
+		return fmt.Errorf("商品不存在: %w", err)
+	}
 	updates := make(map[string]interface{})
-	if req.Name != nil { updates["name"] = *req.Name }
-	if req.Description != nil { updates["description"] = *req.Description }
-	if req.Price != nil { updates["price"] = *req.Price }
-	if req.SeckillPrice != nil { updates["seckill_price"] = *req.SeckillPrice }
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.Price != nil {
+		updates["price"] = *req.Price
+	}
+	if req.SeckillPrice != nil {
+		updates["seckill_price"] = *req.SeckillPrice
+	}
 	if req.TotalStock != nil {
 		updates["total_stock"] = *req.TotalStock
 		// [修复] 仅当 total_stock 与旧值不同时才调整 remain_stock
@@ -75,16 +97,38 @@ func (s *ProductService) UpdateProduct(id int64, req *model.UpdateProductRequest
 			}
 		}
 	}
-	if req.Status != nil { updates["status"] = *req.Status }
-	if req.LimitPerUser != nil { updates["limit_per_user"] = *req.LimitPerUser }
-	if req.ImageURL != nil { updates["image_url"] = *req.ImageURL }
-	if req.StartTime != nil { t, err := time.ParseInLocation("2006-01-02 15:04:05", *req.StartTime, time.Local); if err != nil { return fmt.Errorf("开始时间格式错误") }; updates["start_time"] = t }
-	if req.EndTime != nil { t, err := time.ParseInLocation("2006-01-02 15:04:05", *req.EndTime, time.Local); if err != nil { return fmt.Errorf("结束时间格式错误") }; updates["end_time"] = t }
+	if req.Status != nil {
+		updates["status"] = *req.Status
+	}
+	if req.LimitPerUser != nil {
+		updates["limit_per_user"] = *req.LimitPerUser
+	}
+	if req.ImageURL != nil {
+		updates["image_url"] = *req.ImageURL
+	}
+	if req.StartTime != nil {
+		t, err := time.ParseInLocation("2006-01-02 15:04:05", *req.StartTime, time.Local)
+		if err != nil {
+			return fmt.Errorf("开始时间格式错误")
+		}
+		updates["start_time"] = t
+	}
+	if req.EndTime != nil {
+		t, err := time.ParseInLocation("2006-01-02 15:04:05", *req.EndTime, time.Local)
+		if err != nil {
+			return fmt.Errorf("结束时间格式错误")
+		}
+		updates["end_time"] = t
+	}
 	// [修复] 仅更新 SKU 配置（不传其他字段）也是有效更新
-	if len(updates) == 0 && req.SKUs == nil { return fmt.Errorf("无更新内容") }
+	if len(updates) == 0 && req.SKUs == nil {
+		return fmt.Errorf("无更新内容")
+	}
 	if len(updates) > 0 {
 		updates["updated_at"] = time.Now()
-		if err := dao.UpdateProduct(id, updates); err != nil { return err }
+		if err := dao.UpdateProduct(id, updates); err != nil {
+			return err
+		}
 	}
 	// [修复] SKU 配置整体替换（req.SKUs 为 nil 时不动，传空数组表示清空配置）
 	if req.SKUs != nil {
@@ -115,9 +159,15 @@ func BuildSKUAttrs(skus []model.ProductSKU) []model.SKUAttr {
 	seen := map[string]map[string]bool{}
 	for _, sku := range skus {
 		var spec map[string]string
-		if err := json.Unmarshal([]byte(sku.Spec), &spec); err != nil { continue }
+		if err := json.Unmarshal([]byte(sku.Spec), &spec); err != nil {
+			continue
+		}
 		for name, value := range spec {
-			if _, ok := groups[name]; !ok { groups[name] = []string{}; order = append(order, name); seen[name] = map[string]bool{} }
+			if _, ok := groups[name]; !ok {
+				groups[name] = []string{}
+				order = append(order, name)
+				seen[name] = map[string]bool{}
+			}
 			if !seen[name][value] {
 				seen[name][value] = true
 				groups[name] = append(groups[name], value)
@@ -134,9 +184,13 @@ func BuildSKUAttrs(skus []model.ProductSKU) []model.SKUAttr {
 // [修复] GetProductDetail 返回商品详情 + SKU 配置列表 + 属性分组
 func (s *ProductService) GetProductDetail(productID int64) (*model.ProductDetailResponse, error) {
 	product, err := dao.GetProductByID(productID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	skus, err := dao.GetProductSKUs(productID)
-	if err != nil { skus = nil }
+	if err != nil {
+		skus = nil
+	}
 	return &model.ProductDetailResponse{Product: *product, SKUs: skus, Attrs: BuildSKUAttrs(skus)}, nil
 }
 
@@ -150,11 +204,17 @@ type ProductWithSKU struct {
 // [修复] GetActiveProductsWithSKU 上架商品列表附带 SKU 配置（有配置的商品前端展示属性选择器）
 func (s *ProductService) GetActiveProductsWithSKU() ([]ProductWithSKU, error) {
 	products, err := dao.GetActiveProducts()
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	ids := make([]int64, 0, len(products))
-	for _, p := range products { ids = append(ids, p.ID) }
+	for _, p := range products {
+		ids = append(ids, p.ID)
+	}
 	skuMap, err := dao.GetProductSKUsMap(ids)
-	if err != nil { skuMap = nil }
+	if err != nil {
+		skuMap = nil
+	}
 	result := make([]ProductWithSKU, 0, len(products))
 	for _, p := range products {
 		item := ProductWithSKU{Product: p}

@@ -35,9 +35,9 @@ type ServerConfig struct {
 	InstanceID      string `mapstructure:"instance_id"`
 	ReadTimeout     int    `mapstructure:"read_timeout"`
 	WriteTimeout    int    `mapstructure:"write_timeout"`
-	IdleTimeout     int    `mapstructure:"idle_timeout"`  // [修复] 空闲连接超时（秒），防止慢客户端占用连接
-	MaxBodyBytes    int64  `mapstructure:"max_body_bytes"` // [修复] 请求体最大字节数，默认 1MB
-	SignSecret      string `mapstructure:"sign_secret"`   // [修复] API 签名密钥
+	IdleTimeout     int    `mapstructure:"idle_timeout"`     // [修复] 空闲连接超时（秒），防止慢客户端占用连接
+	MaxBodyBytes    int64  `mapstructure:"max_body_bytes"`   // [修复] 请求体最大字节数，默认 1MB
+	SignSecret      string `mapstructure:"sign_secret"`      // [修复] API 签名密钥
 	PerformanceMode bool   `mapstructure:"performance_mode"` // [优化] 压测模式：跳过非必要中间件
 }
 
@@ -117,8 +117,8 @@ type RabbitMQConsumerConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers  []string           `mapstructure:"brokers"`
-	Topic    string             `mapstructure:"topic"`
+	Brokers  []string            `mapstructure:"brokers"`
+	Topic    string              `mapstructure:"topic"`
 	Producer KafkaProducerConfig `mapstructure:"producer"`
 }
 
@@ -207,11 +207,11 @@ type TracingConfig struct {
 }
 
 var (
-	globalConfig *Config
-	configOnce   sync.Once
-	configMu     sync.RWMutex                 // 配置热更新读写锁
-	onChangeFns  []func(*Config)              // 配置变更回调
-	viperInstance *viper.Viper                // 保留 viper 实例，用于热更新回调
+	globalConfig  *Config
+	configOnce    sync.Once
+	configMu      sync.RWMutex    // 配置热更新读写锁
+	onChangeFns   []func(*Config) // 配置变更回调
+	viperInstance *viper.Viper    // 保留 viper 实例，用于热更新回调
 )
 
 func GetConfig() *Config {
@@ -265,30 +265,74 @@ func LoadConfig(configPath string) (*Config, error) {
 }
 
 func fillDefaults(cfg *Config) {
-	if cfg.Server.Port == 0 { cfg.Server.Port = 8080 }
-	if cfg.Server.Mode == "" { cfg.Server.Mode = "release" }
-	if cfg.Server.ReadTimeout == 0 { cfg.Server.ReadTimeout = 30 }
-	if cfg.Server.WriteTimeout == 0 { cfg.Server.WriteTimeout = 30 }
-	if cfg.Server.IdleTimeout == 0 { cfg.Server.IdleTimeout = 60 }   // [修复] 默认空闲超时 60 秒
-	if cfg.Server.MaxBodyBytes == 0 { cfg.Server.MaxBodyBytes = 1048576 } // [修复] 默认 1MB 请求体限制
-	if cfg.JWT.ExpireHours == 0 { cfg.JWT.ExpireHours = 24 }
-	if cfg.MySQL.OrderTableShardCount == 0 { cfg.MySQL.OrderTableShardCount = 16 }
-	if cfg.RabbitMQ.DelayTTLMs == 0 { cfg.RabbitMQ.DelayTTLMs = 1800000 }
-	if cfg.RabbitMQ.ChannelPoolSize == 0 { cfg.RabbitMQ.ChannelPoolSize = 20 } // [P0-1] 默认连接池大小 20
-	if cfg.RabbitMQ.Heartbeat == 0 { cfg.RabbitMQ.Heartbeat = 30 } // [修复] 默认心跳30秒
-	if cfg.RabbitMQ.Consumer.Concurrency == 0 { cfg.RabbitMQ.Consumer.Concurrency = 10 }
-	if cfg.RabbitMQ.Consumer.Prefetch == 0 { cfg.RabbitMQ.Consumer.Prefetch = 50 }
-	if cfg.Reconciler.IntervalSec == 0 { cfg.Reconciler.IntervalSec = 300 }
-	if cfg.Reconciler.BatchSize == 0 { cfg.Reconciler.BatchSize = 100 }
-	if cfg.Prometheus.MetricsPath == "" { cfg.Prometheus.MetricsPath = "/metrics" }
-	if cfg.Prometheus.MetricsPort == 0 { cfg.Prometheus.MetricsPort = 9090 }
+	if cfg.Server.Port == 0 {
+		cfg.Server.Port = 8080
+	}
+	if cfg.Server.Mode == "" {
+		cfg.Server.Mode = "release"
+	}
+	if cfg.Server.ReadTimeout == 0 {
+		cfg.Server.ReadTimeout = 30
+	}
+	if cfg.Server.WriteTimeout == 0 {
+		cfg.Server.WriteTimeout = 30
+	}
+	if cfg.Server.IdleTimeout == 0 {
+		cfg.Server.IdleTimeout = 60
+	} // [修复] 默认空闲超时 60 秒
+	if cfg.Server.MaxBodyBytes == 0 {
+		cfg.Server.MaxBodyBytes = 1048576
+	} // [修复] 默认 1MB 请求体限制
+	if cfg.JWT.ExpireHours == 0 {
+		cfg.JWT.ExpireHours = 24
+	}
+	if cfg.MySQL.OrderTableShardCount == 0 {
+		cfg.MySQL.OrderTableShardCount = 16
+	}
+	if cfg.RabbitMQ.DelayTTLMs == 0 {
+		cfg.RabbitMQ.DelayTTLMs = 1800000
+	}
+	if cfg.RabbitMQ.ChannelPoolSize == 0 {
+		cfg.RabbitMQ.ChannelPoolSize = 20
+	} // [P0-1] 默认连接池大小 20
+	if cfg.RabbitMQ.Heartbeat == 0 {
+		cfg.RabbitMQ.Heartbeat = 30
+	} // [修复] 默认心跳30秒
+	if cfg.RabbitMQ.Consumer.Concurrency == 0 {
+		cfg.RabbitMQ.Consumer.Concurrency = 10
+	}
+	if cfg.RabbitMQ.Consumer.Prefetch == 0 {
+		cfg.RabbitMQ.Consumer.Prefetch = 50
+	}
+	if cfg.Reconciler.IntervalSec == 0 {
+		cfg.Reconciler.IntervalSec = 300
+	}
+	if cfg.Reconciler.BatchSize == 0 {
+		cfg.Reconciler.BatchSize = 100
+	}
+	if cfg.Prometheus.MetricsPath == "" {
+		cfg.Prometheus.MetricsPath = "/metrics"
+	}
+	if cfg.Prometheus.MetricsPort == 0 {
+		cfg.Prometheus.MetricsPort = 9090
+	}
 	// [修复] 延迟队列交换机和路由键默认值
-	if cfg.RabbitMQ.Exchange.Delay == "" { cfg.RabbitMQ.Exchange.Delay = "miaosha.delay.exchange" }
-	if cfg.RabbitMQ.Queue.DelayRoute == "" { cfg.RabbitMQ.Queue.DelayRoute = "miaosha.order.delay" }
+	if cfg.RabbitMQ.Exchange.Delay == "" {
+		cfg.RabbitMQ.Exchange.Delay = "miaosha.delay.exchange"
+	}
+	if cfg.RabbitMQ.Queue.DelayRoute == "" {
+		cfg.RabbitMQ.Queue.DelayRoute = "miaosha.order.delay"
+	}
 	// [修复] CORS 安全默认值，生产环境应在配置文件中明确指定
-	if len(cfg.CORS.AllowedOrigins) == 0 { cfg.CORS.AllowedOrigins = []string{"http://localhost:3000", "http://localhost:5173"} }
-	if len(cfg.CORS.AllowedMethods) == 0 { cfg.CORS.AllowedMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"} }
-	if len(cfg.CORS.AllowedHeaders) == 0 { cfg.CORS.AllowedHeaders = []string{"Content-Type", "Authorization", "X-Trace-ID"} }
+	if len(cfg.CORS.AllowedOrigins) == 0 {
+		cfg.CORS.AllowedOrigins = []string{"http://localhost:3000", "http://localhost:5173"}
+	}
+	if len(cfg.CORS.AllowedMethods) == 0 {
+		cfg.CORS.AllowedMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	}
+	if len(cfg.CORS.AllowedHeaders) == 0 {
+		cfg.CORS.AllowedHeaders = []string{"Content-Type", "Authorization", "X-Trace-ID"}
+	}
 }
 
 // [修复] validateConfig 启动时验证关键配置项，防止因配置错误导致运行时 panic

@@ -18,9 +18,9 @@ var (
 
 // SeckillError 带详细信息的秒杀业务错误
 type SeckillError struct {
-	Err     error
-	Message string     // 用户可见的提示信息
-	HTTPCode int       // HTTP 状态码
+	Err      error
+	Message  string // 用户可见的提示信息
+	HTTPCode int    // HTTP 状态码
 }
 
 func (e *SeckillError) Error() string {

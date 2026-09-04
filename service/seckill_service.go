@@ -46,7 +46,9 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 	if cacheErr != nil {
 		// 缓存未命中，回退 DB 查询并写入缓存
 		product, err := dao.GetProductByID(productID)
-		if err != nil { return nil, fmt.Errorf("商品不存在") }
+		if err != nil {
+			return nil, fmt.Errorf("商品不存在")
+		}
 		productName = product.Name
 		seckillPrice = product.SeckillPrice
 		limitPerUser = product.LimitPerUser
@@ -57,8 +59,12 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 		redisClient.SetProductCache(context.Background(), productID, productName, seckillPrice, limitPerUser, status, startTimeT, endTimeT, endTimeT.Sub(now))
 	}
 
-	if status != 1 { return nil, utils.NewSeckillError(utils.ErrProductOffline, "商品已下架", 400) }
-	if now.Before(startTimeT) || now.After(endTimeT) { return nil, utils.NewSeckillError(utils.ErrNotInSeckillTime, "不在秒杀活动时间内", 400) }
+	if status != 1 {
+		return nil, utils.NewSeckillError(utils.ErrProductOffline, "商品已下架", 400)
+	}
+	if now.Before(startTimeT) || now.After(endTimeT) {
+		return nil, utils.NewSeckillError(utils.ErrNotInSeckillTime, "不在秒杀活动时间内", 400)
+	}
 
 	// [修复] SKU 配置校验：所选配置必须属于该商品且启用
 	// 命中后价格取 SKU 配置价（不同配置不同价格），订单商品名快照追加规格描述
@@ -70,13 +76,17 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 		}
 		var spec map[string]string
 		if json.Unmarshal([]byte(sku.Spec), &spec) == nil {
-			for k, v := range spec { skuSpecText += k + ":" + v + " " }
+			for k, v := range spec {
+				skuSpecText += k + ":" + v + " "
+			}
 		}
 		seckillPrice = sku.Price
 		productName = productName + "【" + skuSpecText + "】"
 	}
 
-	if limitPerUser <= 0 { limitPerUser = 1 }
+	if limitPerUser <= 0 {
+		limitPerUser = 1
+	}
 	if quantity > limitPerUser {
 		return nil, utils.NewSeckillError(utils.ErrExceedLimit, fmt.Sprintf("超出单用户限购数量（每人限购%d件）", limitPerUser), 400)
 	}
@@ -204,6 +214,8 @@ func trackBehavior(userID, productID int64, action, clientIP, failReason string,
 		Action: action, RequestIP: clientIP, Result: 0, CostMs: time.Since(startTime).Milliseconds(),
 		FailReason: failReason, InstanceID: cfg.Server.InstanceID, Timestamp: time.Now().UnixMilli(),
 	}
-	if action == "success" { track.Result = 1 }
+	if action == "success" {
+		track.Result = 1
+	}
 	kafka.TrackBehavior(track, cfg.Kafka.Topic)
 }

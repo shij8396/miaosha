@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"github.com/miaosha/config"
 	"github.com/miaosha/log"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 var (
@@ -22,7 +22,10 @@ func Init(cfg *config.EtcdConfig) error {
 	var initErr error
 	regOnce.Do(func() {
 		cli, err := clientv3.New(clientv3.Config{Endpoints: cfg.Endpoints, DialTimeout: time.Duration(cfg.DialTimeout) * time.Second})
-		if err != nil { initErr = fmt.Errorf("Etcd连接失败: %w", err); return }
+		if err != nil {
+			initErr = fmt.Errorf("Etcd连接失败: %w", err)
+			return
+		}
 		etcdClient = cli
 		log.L().Info("Etcd客户端初始化成功")
 	})
@@ -72,4 +75,9 @@ func Deregister(key string) error {
 }
 
 func GetClient() *clientv3.Client { return etcdClient }
-func Close() error { if etcdClient != nil { return etcdClient.Close() }; return nil }
+func Close() error {
+	if etcdClient != nil {
+		return etcdClient.Close()
+	}
+	return nil
+}

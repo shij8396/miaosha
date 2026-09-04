@@ -29,8 +29,8 @@ type SlowAPIRecord struct {
 
 // [修复] 全局慢接口记录存储（线程安全，最多保留 100 条）
 var (
-	slowAPIMu     sync.RWMutex
-	slowAPIRecords []SlowAPIRecord
+	slowAPIMu         sync.RWMutex
+	slowAPIRecords    []SlowAPIRecord
 	maxSlowAPIRecords = 100
 )
 
@@ -235,9 +235,9 @@ func (s *MonitorService) GetPVUV() map[string]interface{} {
 		series = append(series, model.PVUVData{Time: t, PV: v})
 	}
 	return map[string]interface{}{
-		"pv":    snap.PV,
-		"uv":    snap.UV,
-		"qps":   snap.QPS,
+		"pv":     snap.PV,
+		"uv":     snap.UV,
+		"qps":    snap.QPS,
 		"series": series,
 	}
 }

@@ -32,16 +32,23 @@ func Init(cfg Config) error {
 	once.Do(func() {
 		level := zapcore.InfoLevel
 		switch cfg.Level {
-		case "debug": level = zapcore.DebugLevel
-		case "warn": level = zapcore.WarnLevel
-		case "error": level = zapcore.ErrorLevel
+		case "debug":
+			level = zapcore.DebugLevel
+		case "warn":
+			level = zapcore.WarnLevel
+		case "error":
+			level = zapcore.ErrorLevel
 		}
 		encoderCfg := zap.NewProductionEncoderConfig()
 		encoderCfg.EncodeTime = zapcore.ISO8601TimeEncoder
 		encoderCfg.EncodeLevel = zapcore.CapitalLevelEncoder
 		encoderCfg.EncodeCaller = zapcore.ShortCallerEncoder
 		var encoder zapcore.Encoder
-		if cfg.Format == "console" { encoder = zapcore.NewConsoleEncoder(encoderCfg) } else { encoder = zapcore.NewJSONEncoder(encoderCfg) }
+		if cfg.Format == "console" {
+			encoder = zapcore.NewConsoleEncoder(encoderCfg)
+		} else {
+			encoder = zapcore.NewJSONEncoder(encoderCfg)
+		}
 		var writers []zapcore.WriteSyncer
 		switch cfg.Output {
 		case "file":
@@ -54,9 +61,15 @@ func Init(cfg Config) error {
 				MaxAge:     cfg.MaxAge,
 				Compress:   cfg.Compress,
 			}
-			if lj.MaxSize == 0 { lj.MaxSize = 100 }
-			if lj.MaxBackups == 0 { lj.MaxBackups = 30 }
-			if lj.MaxAge == 0 { lj.MaxAge = 7 }
+			if lj.MaxSize == 0 {
+				lj.MaxSize = 100
+			}
+			if lj.MaxBackups == 0 {
+				lj.MaxBackups = 30
+			}
+			if lj.MaxAge == 0 {
+				lj.MaxAge = 7
+			}
 			writers = append(writers, zapcore.AddSync(lj))
 		case "both":
 			dir := filepath.Dir(cfg.FilePath)
@@ -68,15 +81,25 @@ func Init(cfg Config) error {
 				MaxAge:     cfg.MaxAge,
 				Compress:   cfg.Compress,
 			}
-			if lj.MaxSize == 0 { lj.MaxSize = 100 }
-			if lj.MaxBackups == 0 { lj.MaxBackups = 30 }
-			if lj.MaxAge == 0 { lj.MaxAge = 7 }
+			if lj.MaxSize == 0 {
+				lj.MaxSize = 100
+			}
+			if lj.MaxBackups == 0 {
+				lj.MaxBackups = 30
+			}
+			if lj.MaxAge == 0 {
+				lj.MaxAge = 7
+			}
 			writers = append(writers, zapcore.AddSync(os.Stdout), zapcore.AddSync(lj))
 		default:
 			writers = append(writers, zapcore.AddSync(os.Stdout))
 		}
 		var writer zapcore.WriteSyncer
-		if len(writers) == 1 { writer = writers[0] } else { writer = zapcore.NewMultiWriteSyncer(writers...) }
+		if len(writers) == 1 {
+			writer = writers[0]
+		} else {
+			writer = zapcore.NewMultiWriteSyncer(writers...)
+		}
 		core := zapcore.NewCore(encoder, writer, level)
 		globalLogger = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1), zap.AddStacktrace(zapcore.ErrorLevel))
 		globalSugar = globalLogger.Sugar()
@@ -85,18 +108,28 @@ func Init(cfg Config) error {
 }
 
 func L() *zap.SugaredLogger {
-	if globalSugar == nil { l, _ := zap.NewDevelopment(); return l.Sugar() }
+	if globalSugar == nil {
+		l, _ := zap.NewDevelopment()
+		return l.Sugar()
+	}
 	return globalSugar
 }
 
 func Logger() *zap.Logger {
-	if globalLogger == nil { l, _ := zap.NewDevelopment(); return l }
+	if globalLogger == nil {
+		l, _ := zap.NewDevelopment()
+		return l
+	}
 	return globalLogger
 }
 
-func Sync() { if globalLogger != nil { _ = globalLogger.Sync() } }
+func Sync() {
+	if globalLogger != nil {
+		_ = globalLogger.Sync()
+	}
+}
 
-func WithTraceID(traceID string) *zap.SugaredLogger { return L().With("trace_id", traceID) }
+func WithTraceID(traceID string) *zap.SugaredLogger        { return L().With("trace_id", traceID) }
 func WithContext(fields ...interface{}) *zap.SugaredLogger { return L().With(fields...) }
 
 // [修复] NewGormWriter 创建 GORM 日志 Writer，将慢查询日志输出到 zap

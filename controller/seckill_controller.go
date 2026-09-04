@@ -254,7 +254,9 @@ func (ctl *SeckillController) GetPurchasedCounts(c *gin.Context) {
 	if ids := c.Query("product_ids"); ids != "" {
 		for _, s := range strings.Split(ids, ",") {
 			s = strings.TrimSpace(s)
-			if s == "" { continue }
+			if s == "" {
+				continue
+			}
 			id, err := strconv.ParseInt(s, 10, 64)
 			if err != nil || id <= 0 {
 				utils.BadRequest(c, "商品ID格式错误")
@@ -338,7 +340,7 @@ func (ctl *SeckillController) GetCaptcha(c *gin.Context) {
 		return
 	}
 	uid := c.GetInt64("user_id")
-	_ = uid // 预留用于日志追踪
+	_ = uid       // 预留用于日志追踪
 	_ = productID // 预留用于扩展
 
 	// 生成随机数学算式：num1 + op1 + num2 + op2 + num3
@@ -386,9 +388,9 @@ func generateMathExpression() (string, int) {
 	ops := []byte{'+', '-'}
 	b := make([]byte, 1)
 	rand.Read(b)
-	n1 := int(b[0]%9) + 1  // 1~9
+	n1 := int(b[0]%9) + 1 // 1~9
 	rand.Read(b)
-	n2 := int(b[0]%9) + 1  // 1~9
+	n2 := int(b[0]%9) + 1 // 1~9
 	rand.Read(b)
 	op := int(b[0]) % 2
 
