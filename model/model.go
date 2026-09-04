@@ -125,6 +125,7 @@ type CreateProductRequest struct {
 	EndTime      string  `json:"end_time" binding:"required"`
 	LimitPerUser int     `json:"limit_per_user"`
 	ImageURL     string  `json:"image_url"`
+	SKUs         []SKUInput `json:"skus"` // [修复] 商品配置（SKU）：不同配置不同价格
 }
 
 type UpdateProductRequest struct {
@@ -138,6 +139,43 @@ type UpdateProductRequest struct {
 	Status       *int8    `json:"status"`
 	LimitPerUser *int     `json:"limit_per_user"`
 	ImageURL     *string  `json:"image_url"`
+	SKUs         []SKUInput `json:"skus"` // [修复] 传入时整体替换商品配置；nil 表示不修改
+}
+
+// [修复] SKU 输入：属性键值对 + 价格 + 库存（如 {"颜色":"黑","存储":"256G"}）
+type SKUInput struct {
+	Spec  map[string]string `json:"spec" binding:"required"`
+	Price float64           `json:"price" binding:"required,gt=0"`
+	Stock int               `json:"stock" binding:"gte=0"`
+}
+
+// [修复] 商品规格配置表：实现"不同配置对应不同价格"
+// 手机类：版本/存储/颜色；服装类：颜色/尺码——属性名完全自定义，由 spec JSON 承载
+type ProductSKU struct {
+	ID        int64          `gorm:"primaryKey;autoIncrement;comment:SKUID" json:"id"`
+	ProductID int64          `gorm:"type:bigint;not null;index;comment:商品ID" json:"product_id"`
+	Spec      string         `gorm:"type:varchar(512);not null;comment:规格JSON" json:"spec"`
+	Price     float64        `gorm:"type:decimal(10,2);not null;comment:该配置价格" json:"price"`
+	Stock     int            `gorm:"type:int;default:0;comment:该配置展示库存" json:"stock"`
+	Status    int8           `gorm:"type:tinyint;default:1;comment:1启用0禁用" json:"status"`
+	CreatedAt time.Time      `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt time.Time      `gorm:"comment:更新时间" json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index;comment:软删除" json:"-"`
+}
+
+func (ProductSKU) TableName() string { return "t_product_sku" }
+
+// [修复] SKU 属性分组（用于前端渲染选择器），如 [{name:"颜色",values:["黑","白"]}]
+type SKUAttr struct {
+	Name   string   `json:"name"`
+	Values []string `json:"values"`
+}
+
+// [修复] 商品详情响应：商品基本信息 + SKU 列表 + 属性分组
+type ProductDetailResponse struct {
+	Product
+	SKUs  []ProductSKU `json:"skus"`
+	Attrs []SKUAttr    `json:"attrs"`
 }
 
 type SeckillRequest struct {
@@ -147,6 +185,7 @@ type SeckillRequest struct {
 	PathToken     string `json:"path_token"`     // [创新] 秒杀地址隐藏 Token
 	CaptchaCode   int    `json:"captcha_code"`   // [创新] 数学验证码答案
 	CaptchaID     string `json:"captcha_id"`     // [创新] 验证码唯一ID，用于后端校验关联
+	SKUID         int64  `json:"sku_id"`         // [修复] 所选商品配置（SKU），0=默认配置
 }
 
 // [创新] 秒杀地址隐藏响应
@@ -244,6 +283,19 @@ type UpdateUserRoleRequest struct {
 	Role   string `json:"role" binding:"required,oneof=super_admin operator monitor_readonly risk_control admin user"`
 }
 
+// ForgotPasswordRequest 忘记密码请求
+type ForgotPasswordRequest struct {
+	Username    string `json:"username" binding:"required,min=3,max=64"`
+	Phone       string `json:"phone" binding:"required,max=20"`
+	NewPassword string `json:"new_password" binding:"required,min=6,max=64"`
+}
+
+// ResetPasswordRequest 管理员重置用户密码请求
+type ResetPasswordRequest struct {
+	UserID      int64  `json:"user_id" binding:"required,gt=0"`
+	NewPassword string `json:"new_password" binding:"required,min=6,max=64"`
+}
+
 // AdminOrderQueryRequest 管理员订单查询请求（支持跨用户查询）
 type AdminOrderQueryRequest struct {
 	Page     int    `form:"page" binding:"min=1"`
@@ -286,11 +338,52 @@ type MiddlewareStatus struct {
 }
 
 // SeckillStats 秒杀统计
+// [增强] 数据大屏指标补全：新增 PV/UV、转化率、秒杀请求明细、MQ 明细
 type SeckillStats struct {
-	TotalOrders  int64   `json:"total_orders"`  // 总订单数
-	SuccessRate  float64 `json:"success_rate"`  // 成功率(%)
-	QPS          float64 `json:"qps"`           // 当前秒杀QPS
+	TotalOrders  int64   `json:"total_orders"`  // 总订单数（累计创建成功）
+	SuccessRate  float64 `json:"success_rate"`  // 秒杀成功率(%)
+	QPS          float64 `json:"qps"`           // 当前系统QPS（5秒滑动平均）
 	MQBacklog    int64   `json:"mq_backlog"`    // MQ消息堆积数
+	PV           int64   `json:"pv"`            // 当日累计PV
+	UV           int64   `json:"uv"`            // 当日累计UV（按用户/IP去重）
+	ConversionRate float64 `json:"conversion_rate"` // UV→下单转化率(%)
+	SeckillRequests int64 `json:"seckill_requests"` // 秒杀请求总数（成功+失败）
+	SeckillSuccess  int64 `json:"seckill_success"`  // 秒杀成功次数
+	SeckillFail     int64 `json:"seckill_fail"`     // 秒杀失败次数
+	OrderTimeout    int64  `json:"order_timeout"`   // 超时关闭订单数
+	MQPublished     int64  `json:"mq_published"`    // MQ累计发布
+	MQConsumed      int64  `json:"mq_consumed"`     // MQ累计消费
+	MQConnected     bool   `json:"mq_connected"`    // MQ连接是否可用
+}
+
+// [增强] HotProduct 热销商品排行（含实时库存状态）
+type HotProduct struct {
+	ProductID    int64   `json:"product_id"`
+	ProductName  string  `json:"product_name"`
+	SoldQuantity int64   `json:"sold_quantity"`   // 累计销售件数
+	SeckillPrice float64 `json:"seckill_price"`   // 秒杀价
+	RedisStock   int     `json:"redis_stock"`     // Redis 实时库存
+	DBRemainStock int    `json:"db_remain_stock"` // DB 剩余库存
+	TotalStock   int     `json:"total_stock"`     // 总库存
+	StockPercent float64 `json:"stock_percent"`   // 库存剩余率(%)
+	Status       int8    `json:"status"`          // 1上架 0下架
+}
+
+// [增强] InventoryItem 库存状态（数据大屏库存监控面板）
+type InventoryItem struct {
+	ProductID    int64   `json:"product_id"`
+	ProductName  string  `json:"product_name"`
+	RedisStock   int     `json:"redis_stock"`     // Redis 实时可售库存
+	DBRemainStock int    `json:"db_remain_stock"` // DB 剩余库存
+	TotalStock   int     `json:"total_stock"`
+	StockPercent float64 `json:"stock_percent"`   // 剩余率(%)
+	WarningLevel string  `json:"warning_level"`   // normal/warning/danger/soldout
+}
+
+// [增强] PVUVData PV/UV 时序数据（实时流量图）
+type PVUVData struct {
+	Time string `json:"time"`
+	PV   int64  `json:"pv"` // 该秒请求数
 }
 
 // QPSDataPoint QPS时序数据点

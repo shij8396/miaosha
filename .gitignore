@@ -68,3 +68,17 @@ compare/
 # ===== 一次性工具 =====
 genhash/
 tools/
+
+# ===== 部署脚本（含服务器明文密码，禁止提交公开仓库） =====
+deploy_and_fix.py
+deploy_update.py
+
+# ===== 部署产物与压缩包 =====
+*.zip
+*.tar
+miaosha-server-linux
+miaosha-server-prod*
+
+# ===== 截图与临时目录 =====
+screenshot-*.png
+test_upload/

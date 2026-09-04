@@ -75,6 +75,8 @@ func StartOrderConsumer(handler OrderHandler) {
 					continue
 				}
 				msg.Ack(false)
+				// [增强] 消费完成计数（大屏 MQ 堆积统计）
+				IncConsumed()
 				log.L().Infow("订单创建成功", "worker_id", workerID, "order_no", orderMsg["order_no"])
 			}
 		}(i)
@@ -120,8 +122,10 @@ func StartDeadLetterConsumer(handler OrderHandler) {
 					continue
 				}
 				msg.Ack(false)
-				log.L().Infow("超时订单已自动取消", "worker_id", workerID, "order_no", timeoutMsg["order_no"])
-			}
-		}(i)
+			// [增强] 死信消费完成同样计入消费计数
+			IncConsumed()
+			log.L().Infow("超时订单已自动取消", "worker_id", workerID, "order_no", timeoutMsg["order_no"])
+		}
+	}(i)
 	}
 }

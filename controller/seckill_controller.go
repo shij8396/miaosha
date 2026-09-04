@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -115,12 +117,15 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 
 	// [创新] 数学验证码：后端校验算式答案，防止脚本自动化攻击
 	// 借鉴 qiurunze123/miaosha（19k Stars）
-	if !isAdmin && req.CaptchaCode > 0 {
-		captchaID := req.CaptchaID
-		if captchaID == "" {
-			captchaID = fmt.Sprintf("%d:%d", uid, req.ProductID)
+	// [修复] 验证码改为强制校验：原逻辑 req.CaptchaCode > 0 时才校验，
+	// 恶意脚本不传 captcha 字段即可绕过验证直接秒杀，属于逻辑漏洞
+	if !isAdmin {
+		if req.CaptchaID == "" || req.CaptchaCode == 0 {
+			log.L().Warnw("缺少验证码参数被拒绝", "user_id", uid, "product_id", req.ProductID)
+			utils.Error(c, 400, "请完成数学验证码后再参与秒杀")
+			return
 		}
-		valid, err := redisClient.GetAndVerifyCaptcha(ctx, captchaID, req.CaptchaCode)
+		valid, err := redisClient.GetAndVerifyCaptcha(ctx, req.CaptchaID, req.CaptchaCode)
 		if err != nil || !valid {
 			log.L().Warnw("数学验证码校验失败", "user_id", uid, "product_id", req.ProductID)
 			utils.Error(c, 400, "验证码错误或已过期，请刷新后重试")
@@ -166,7 +171,7 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 	// 合并 Key = 商品ID + 用户ID，合并窗口 50ms
 	mergeKey := fmt.Sprintf("seckill:%d:%d", uid, req.ProductID)
 	mergeResult, mergeErr, waiterCount := ctl.mergeGroup.Do(mergeKey, func() (interface{}, error) {
-		return ctl.seckillService.ExecuteSeckill(ctx, uid, req.ProductID, req.Quantity, req.IdempotentKey, c.ClientIP(), traceID)
+		return ctl.seckillService.ExecuteSeckill(ctx, uid, req.ProductID, req.Quantity, req.SKUID, req.IdempotentKey, c.ClientIP(), traceID)
 	}, 50*time.Millisecond)
 
 	if waiterCount > 1 {
@@ -230,6 +235,54 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 	}
 	log.L().Infow(roleLabel+"秒杀排队成功", "trace_id", traceID, "user_id", uid, "product_id", req.ProductID, "order_no", resp.OrderNo, "cost_ms", time.Since(startTime).Milliseconds())
 	utils.Success(c, resp)
+}
+
+// GetPurchasedCounts 获取用户各商品已购数量
+// @Summary      获取用户已购数量
+// @Description  查询当前用户在指定商品上的已购数量（Redis限购计数），秒杀首页用于恢复"已抢购"按钮状态
+// @Tags         秒杀模块
+// @Produce      json
+// @Param        product_ids query string true "商品ID列表，逗号分隔（如 18,19,20）"
+// @Security     BearerAuth
+// @Success      200  {object}  utils.Response{data=map[string]int}  "商品ID→已购数量"
+// @Router       /api/v1/seckill/purchased [get]
+func (ctl *SeckillController) GetPurchasedCounts(c *gin.Context) {
+	uid := c.GetInt64("user_id")
+
+	// [修复] 解析 product_ids 查询参数（逗号分隔的商品ID列表）
+	productIDs := make([]int64, 0)
+	if ids := c.Query("product_ids"); ids != "" {
+		for _, s := range strings.Split(ids, ",") {
+			s = strings.TrimSpace(s)
+			if s == "" { continue }
+			id, err := strconv.ParseInt(s, 10, 64)
+			if err != nil || id <= 0 {
+				utils.BadRequest(c, "商品ID格式错误")
+				return
+			}
+			productIDs = append(productIDs, id)
+		}
+	}
+	if len(productIDs) == 0 {
+		utils.BadRequest(c, "product_ids 参数不能为空")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+
+	// [修复] 逐商品读取 Redis 限购计数，构造 商品ID→已购数量 映射
+	result := make(map[string]int, len(productIDs))
+	for _, pid := range productIDs {
+		count, err := redisClient.GetUserPurchaseCount(ctx, uid, pid)
+		if err != nil {
+			// 单个商品读取失败不阻塞整体，计为 0（下次秒杀时 Lua 会再次强校验）
+			log.L().Warnw("读取用户已购数量失败", "user_id", uid, "product_id", pid, "error", err)
+			count = 0
+		}
+		result[strconv.FormatInt(pid, 10)] = count
+	}
+	utils.Success(c, result)
 }
 
 // GetSeckillPath 获取秒杀隐藏路径 Token
@@ -327,43 +380,32 @@ func parseProductID(c *gin.Context) (int64, error) {
 }
 
 // generateMathExpression 生成随机数学算式，返回 (表达式字符串, 正确答案)
-// 表达式格式: num1 op1 num2 op2 num3，其中 op ∈ {+, -, *}
+// 表达式格式: num1 op num2，其中 op ∈ {+, -}，简单加减题
 // 借鉴 qiurunze123/miaosha 的验证码算法
 func generateMathExpression() (string, int) {
-	ops := []byte{'+', '-', '*'}
+	ops := []byte{'+', '-'}
 	b := make([]byte, 1)
 	rand.Read(b)
-	n1 := int(b[0] % 10)
+	n1 := int(b[0]%9) + 1  // 1~9
 	rand.Read(b)
-	n2 := int(b[0] % 10)
+	n2 := int(b[0]%9) + 1  // 1~9
 	rand.Read(b)
-	n3 := int(b[0] % 10)
-	rand.Read(b)
-	op1 := int(b[0]) % 3
-	rand.Read(b)
-	op2 := int(b[0]) % 3
+	op := int(b[0]) % 2
 
-	expr := fmt.Sprintf("%d%c%d%c%d", n1, ops[op1], n2, ops[op2], n3)
-
-	// 计算正确答案（注意：没有括号，按从左到右顺序计算，与 JavaScript eval 一致）
-	answer := n1
-	switch ops[op1] {
-	case '+':
-		answer += n2
-	case '-':
-		answer -= n2
-	case '*':
-		answer *= n2
-	}
-	switch ops[op2] {
-	case '+':
-		answer += n3
-	case '-':
-		answer -= n3
-	case '*':
-		answer *= n3
+	// 减法确保结果非负
+	if ops[op] == '-' && n2 > n1 {
+		n1, n2 = n2, n1
 	}
 
+	expr := fmt.Sprintf("%d%c%d", n1, ops[op], n2)
+
+	answer := 0
+	switch ops[op] {
+	case '+':
+		answer = n1 + n2
+	case '-':
+		answer = n1 - n2
+	}
 	return expr, answer
 }
 

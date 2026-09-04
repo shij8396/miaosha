@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS t_product (
     status TINYINT DEFAULT 0,
     image_url VARCHAR(512) DEFAULT '',
     limit_per_user INT DEFAULT 1,
+    pay_timeout BIGINT DEFAULT 30 COMMENT '支付超时时间(分钟)',
     created_at DATETIME(3) DEFAULT NULL,
     updated_at DATETIME(3) DEFAULT NULL,
     deleted_at DATETIME(3) DEFAULT NULL,
@@ -53,7 +54,7 @@ BEGIN
             status TINYINT DEFAULT 0,
             pay_time DATETIME(3) DEFAULT NULL,
             cancel_time DATETIME(3) DEFAULT NULL,
-            cancel_reason VARCHAR(256) DEFAULT '''''',
+            cancel_reason VARCHAR(256) DEFAULT '''',
             created_at DATETIME(3) DEFAULT NULL,
             updated_at DATETIME(3) DEFAULT NULL,
             PRIMARY KEY (id), UNIQUE KEY idx_order_no (order_no), KEY idx_user_id (user_id),
@@ -110,10 +111,10 @@ CREATE TABLE IF NOT EXISTS t_audit_log (
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作审计日志表';
 
--- 测试数据：密码为 test123（bcrypt 哈希），请在生产环境删除
+-- 测试数据：密码为 test123（bcrypt cost=12 哈希），请在生产环境删除
 INSERT INTO t_user (username, password, nickname, role, status, created_at, updated_at) VALUES
-('testuser', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '测试用户', 'user', 1, NOW(), NOW()),
-('admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '管理员', 'admin', 1, NOW(), NOW());
+('testuser', '$2a$12$uzVNfS7z2OS9BM3qIa2HeOZQKuYJk5N8yLz.f82IUs66Dh82sFYIm', '测试用户', 'user', 1, NOW(), NOW()),
+('admin', '$2a$12$uzVNfS7z2OS9BM3qIa2HeOZQKuYJk5N8yLz.f82IUs66Dh82sFYIm', '管理员', 'admin', 1, NOW(), NOW());
 
 INSERT INTO t_product (name, description, price, seckill_price, total_stock, remain_stock, start_time, end_time, status, limit_per_user, created_at, updated_at) VALUES
 ('iPhone 16 Pro Max', '苹果旗舰手机', 9999.00, 6999.00, 1000, 1000, '2026-01-01 00:00:00', '2027-12-31 23:59:59', 1, 1, NOW(), NOW()),

@@ -34,6 +34,7 @@ var (
 	seckillFailCount    int64
 	orderCreatedCount   int64
 	orderTimeoutCount   int64
+	sentinelRejectCount int64 // [增强] 限流拒绝累计（大屏真实数据）
 
 	// [修复] 缓存 metrics HTTP Server 实例，支持优雅关闭
 	metricsServer *http.Server
@@ -42,6 +43,8 @@ var (
 func Init() {
 	// [修复] 注册新增指标：seckillCounter、orderCreatedTotal、orderTimeoutTotal
 	prometheus.MustRegister(httpRequestTotal, httpRequestDuration, httpErrorTotal, sentinelRejectTotal, sentinelCircuitBreakTotal, seckillSuccessTotal, seckillFailTotal, redisStockGauge, mqBacklogGauge, seckillCounter, orderCreatedTotal, orderTimeoutTotal)
+	// [增强] 启动实时统计引擎（PV/UV、QPS 采样、热销、告警缓冲）
+	startStatsEngine()
 }
 
 // [修复] StartMetricsServer 使用 http.Server 替代 http.ListenAndServe，捕获错误并支持优雅关闭
@@ -84,7 +87,13 @@ func ShutdownMetricsServer() {
 func IncHTTPRequestTotal(method, path string) { httpRequestTotal.WithLabelValues(method, path).Inc() }
 func ObserveHTTPRequestDuration(method, path string, duration float64) { httpRequestDuration.WithLabelValues(method, path).Observe(duration) }
 func IncHTTPErrorTotal(method, path, statusCode string) { httpErrorTotal.WithLabelValues(method, path, statusCode).Inc() }
-func IncSentinelReject() { sentinelRejectTotal.Inc() }
+func IncSentinelReject() {
+	sentinelRejectTotal.Inc()
+	atomic.AddInt64(&sentinelRejectCount, 1) // [增强] 内存计数（大屏真实数据）
+}
+
+// [增强] GetSentinelRejectTotal 限流拒绝累计数（内存快照）
+func GetSentinelRejectTotal() int64 { return atomic.LoadInt64(&sentinelRejectCount) }
 func IncSentinelCircuitBreak() { sentinelCircuitBreakTotal.Inc() }
 func IncSeckillSuccess(productID string) {
 	seckillSuccessTotal.WithLabelValues(productID).Inc()

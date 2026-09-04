@@ -73,16 +73,16 @@ func (ctl *ProductController) GetProductList(c *gin.Context) {
 }
 
 // GetActiveProducts 获取正在秒杀的商品
-// @Summary      获取正在秒杀的商品
-// @Description  查询当前时间范围内状态为上架且库存大于 0 的秒杀商品
+// @Summary      获取正在秒杀的商品（含SKU配置）
+// @Description  查询当前时间范围内状态为上架且库存大于 0 的秒杀商品，附带规格配置与属性分组
 // @Tags         商品模块
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200  {object}  utils.Response{data=[]model.Product}  "查询成功"
+// @Success      200  {object}  utils.Response{data=[]service.ProductWithSKU}  "查询成功"
 // @Router       /api/v1/product/active [get]
 func (ctl *ProductController) GetActiveProducts(c *gin.Context) {
-	products, err := ctl.productService.GetActiveProducts()
+	products, err := ctl.productService.GetActiveProductsWithSKU()
 	if err != nil { utils.InternalError(c, err.Error()); return }
 	utils.Success(c, products)
 }

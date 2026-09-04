@@ -55,10 +55,12 @@ redis:
   write_timeout: 3
 
 rabbitmq:
-  # [修复] 容器内使用 Docker 服务名 rabbitmq，vhost 为 /miaosha
+  # [修复] 容器内使用 Docker 服务名 rabbitmq，vhost 已包含在 URL 中（/miaosha）
+  # vhost 设为空字符串，避免代码二次追加 vhost 导致 URL 变成 .../miaosha//miaosha
   urls:
     - "amqp://admin:miaosha_mq_2026@rabbitmq:5672/miaosha"  # 由 MIAOSHA_RABBITMQ_URLS_0 注入
-  vhost: "/miaosha"
+  vhost: ""
+  heartbeat: 30
   exchange:
     order: "miaosha.order.exchange"
     dead_letter: "miaosha.dead.letter.exchange"

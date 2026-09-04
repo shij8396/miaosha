@@ -14,7 +14,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': 'http://localhost:8080',
-      '/health': 'http://localhost:8080'
+      '/health': 'http://localhost:8080',
+      // [修复] 图片静态资源代理：后端通过 router.Static("/uploads") 提供服务，前端需代理到 8080
+      '/uploads': 'http://localhost:8080',
+      // [修复] WebSocket 代理：支持 ws 协议转发，解决开发环境 /ws 连接失败
+      '/ws': {
+        target: 'http://localhost:8080',
+        ws: true
+      }
     }
   },
   build: {

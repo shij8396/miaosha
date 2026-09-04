@@ -50,18 +50,40 @@ func Init(cfg *config.SentinelConfig) error {
 		})
 		if err != nil { initErr = fmt.Errorf("加载熔断规则失败: %w", err); return }
 
-		log.L().Infow("Sentinel流量防护初始化完成", "global_qps", cfg.GlobalQPS, "seckill_qps", cfg.SeckillQPS)
+		log.L().Infow("Sentinel流量防护初始化完成", "global_qps", cfg.GlobalQPS, "seckill_qps", cfg.SeckillQPS,
+			"hot_param_threshold", cfg.HotParam.Threshold, "hot_param_duration_sec", cfg.HotParam.DurationSec)
 	})
 	return initErr
 }
 
 func Entry(resource string) (*base.SentinelEntry, error) {
 	if !enabled { return nil, nil }
-	return sentinel.Entry(resource)
+	e, blockErr := sentinel.Entry(resource)
+	// [修复] 拒绝原因细分日志：区分限流/熔断/热点/系统保护，避免所有429都显示"限流"导致误判
+	if blockErr != nil {
+		log.L().Warnw("Sentinel拒绝详情", "resource", resource,
+			"err_type", fmt.Sprintf("%T", blockErr),
+			"block_type", blockErr.BlockType().String(),
+			"block_msg", blockErr.BlockMsg(),
+			"rule", fmt.Sprintf("%T", blockErr.TriggeredRule()))
+	}
+	var err error
+	if blockErr != nil { err = blockErr }
+	return e, err
 }
 func EntryWithArgs(resource string, args ...interface{}) (*base.SentinelEntry, error) {
 	if !enabled { return nil, nil }
-	return sentinel.Entry(resource, sentinel.WithArgs(args...))
+	e, blockErr := sentinel.Entry(resource, sentinel.WithArgs(args...))
+	// [修复] 热点参数限流拒绝详情：threshold<=0 / batch超限等场景在此显式暴露
+	if blockErr != nil {
+		log.L().Warnw("Sentinel热点拒绝详情", "resource", resource,
+			"block_type", blockErr.BlockType().String(),
+			"block_msg", blockErr.BlockMsg(),
+			"rule", fmt.Sprintf("%+v", blockErr.TriggeredRule()))
+	}
+	var err error
+	if blockErr != nil { err = blockErr }
+	return e, err
 }
 
 // [修复] ReloadRules 从配置重新加载所有 Sentinel 规则，支持热更新

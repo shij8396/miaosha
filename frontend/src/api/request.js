@@ -36,7 +36,8 @@ request.interceptors.request.use(config => {
     config.headers.Authorization = `Bearer ${token}`
   }
   // [修复] API 签名：为所有非白名单请求添加 HMAC-SHA256 签名头
-  if (SIGN_ENABLED) {
+  // [修复] FormData 请求跳过签名（multipart body 无法正确序列化）
+  if (SIGN_ENABLED && !(config.data instanceof FormData)) {
     const timestamp = Math.floor(Date.now() / 1000).toString()
     const method = config.method.toUpperCase()
     const path = (config.url || '').replace(config.baseURL || '', '').split('?')[0]
@@ -49,27 +50,23 @@ request.interceptors.request.use(config => {
 
 request.interceptors.response.use(
   response => {
-    /* [修复] 任务3: 响应返回时减少 loading 计数 */
     if (response.config.responseType !== 'blob') {
       hideLoading()
     }
-    // [修复] F-08: Blob 响应类型（如文件下载）不进行 JSON 解析，直接返回原始响应
     if (response.config.responseType === 'blob') {
       return response
     }
     const { code, message, data } = response.data
     if (code === 200) return data
-    if (code === 401) {
+    if (code === 401 && (message.includes('Token') || message.includes('token'))) {
       localStorage.clear()
       window.location.hash = '#/login'
       ElMessage.error('登录已过期，请重新登录')
       return Promise.reject(new Error(message))
     }
-    ElMessage.error(message || '请求失败')
     return Promise.reject(new Error(message))
   },
   error => {
-    /* [修复] 任务3: 请求失败时减少 loading 计数 */
     if (error.config?.responseType !== 'blob') {
       hideLoading()
     }
@@ -77,10 +74,11 @@ request.interceptors.response.use(
       localStorage.clear()
       window.location.hash = '#/login'
       ElMessage.error('登录已过期')
-    } else {
-      ElMessage.error(error.message || '网络错误')
+      return Promise.reject(error)
     }
-    return Promise.reject(error)
+    const businessMsg = error.response?.data?.message
+    const displayMsg = businessMsg || error.message || '网络错误'
+    return Promise.reject(new Error(displayMsg))
   }
 )
 

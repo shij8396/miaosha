@@ -24,6 +24,13 @@ export const routes = [
         component: () => import('@/views/UserPages/SeckillHome.vue'),
         meta: { title: '秒杀首页', icon: 'Shop' }
       },
+      // [修复] 商品详情页路由：秒杀首页商品卡片点击跳转，携带商品ID
+      {
+        path: 'product/:id',
+        name: 'ProductDetail',
+        component: () => import('@/views/UserPages/ProductDetail.vue'),
+        meta: { title: '商品详情' }
+      },
       {
         path: 'orders',
         name: 'MyOrder',

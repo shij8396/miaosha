@@ -8,11 +8,14 @@
     <div class="product-grid" v-loading="loading">
       <el-empty v-if="!loading && products.length === 0" description="暂无秒杀商品" />
       <div v-for="p in products" :key="p.id" class="product-card glass-card fade-in-up">
-        <div class="product-img">
-          <el-icon :size="48"><Goods /></el-icon>
+        <!-- [修复] 商品图片/名称可点击跳转详情页 -->
+        <div class="product-img" @click="goDetail(p)" title="查看商品详情">
+          <!-- [修复] 有图片时显示商品图片，无图片时显示默认图标 -->
+          <img v-if="p.image_url" :src="p.image_url" :alt="p.name" class="product-real-img" @error="p.image_url = ''" />
+          <el-icon v-else :size="48"><Goods /></el-icon>
         </div>
         <div class="product-info">
-          <div class="product-name">{{ p.name }}</div>
+          <div class="product-name" @click="goDetail(p)" title="查看商品详情">{{ p.name }}</div>
           <div class="product-desc">{{ p.description || '暂无描述' }}</div>
           <div class="countdown-row">
             <el-tag size="small" type="warning">距结束</el-tag>
@@ -54,6 +57,9 @@
           </el-button>
           <!-- [修复] 已抢购提示：动态显示限购数量 -->
           <div class="grabbed-tip" v-if="isLimitReached(p)">每人限购{{ p.limit_per_user || 1 }}件，如需重新购买请先取消已有订单</div>
+          <div class="detail-link">
+            <el-button text size="small" type="primary" @click="goDetail(p)">查看商品详情 &gt;</el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -82,7 +88,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getActiveProducts } from '@/api/goodsApi'
-import { seckill as doSeckillApi, getSeckillPath, getCaptcha } from '@/api/seckillApi'
+import { seckill as doSeckillApi, getSeckillPath, getCaptcha, getPurchasedCounts } from '@/api/seckillApi'
 import CountDown from '@/components/Seckill/CountDown.vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
@@ -129,6 +135,11 @@ async function refreshPathToken(productId) {
   }
 }
 
+// [修复] 跳转商品详情页
+function goDetail(p) {
+  router.push(`/product/${p.id}`)
+}
+
 function progressColor(pct) {
   if (pct > 50) return '#67c23a'
   if (pct > 20) return '#e6a23c'
@@ -166,51 +177,84 @@ async function loadProducts() {
   try {
     const data = await getActiveProducts()
     products.value = Array.isArray(data) ? data : (data?.list || [])
-    // [创新] 自动获取每个商品的验证码和路径 Token
+    const tasks = []
     products.value.forEach(p => {
       if (p.remain_stock > 0) {
-        refreshCaptcha(p.id)
-        refreshPathToken(p.id)
+        tasks.push(refreshCaptcha(p.id))
+        tasks.push(refreshPathToken(p.id))
       }
     })
+    // [修复] 从后端恢复各商品已购数量（Redis限购计数），
+    // 解决"秒杀后查看订单再返回首页，按钮状态丢失仍可点击"的问题
+    if (products.value.length > 0) {
+      tasks.push(restorePurchasedCounts())
+    }
+    await Promise.allSettled(tasks)
   } catch (e) { console.error('加载商品列表失败:', e) } finally { loading.value = false }
 }
 
+// [修复] 拉取用户已购数量并恢复 grabbedCounts（页面重新挂载/刷新后仍显示"已抢购"）
+async function restorePurchasedCounts() {
+  try {
+    const ids = products.value.map(p => p.id)
+    const counts = await getPurchasedCounts(ids)
+    if (counts && typeof counts === 'object') {
+      const restored = {}
+      Object.entries(counts).forEach(([pid, cnt]) => {
+        restored[pid] = Number(cnt) || 0
+      })
+      grabbedCounts.value = restored
+    }
+  } catch (e) {
+    console.error('恢复已购数量失败:', e)
+  }
+}
+
+function generateIdempotentKey() {
+  if (crypto && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return 'id-' + Date.now() + '-' + Math.random().toString(36).substring(2, 15)
+}
+
 async function doSeckill(product) {
-  // [修复] S-23: 防重复提交 - 如果正在秒杀中或已达限购上限，直接返回
   if (seckilling.value || isLimitReached(product)) return
 
-  // [创新] 数学验证码校验
   const captcha = captchaData[product.id]
   if (!captcha) {
-    ElMessage.warning('请先获取验证码')
+    ElMessage.warning('验证码加载中，请稍候重试')
+    refreshCaptcha(product.id)
     return
   }
-  const userAnswer = parseInt(captchaInputs[product.id])
-  if (!userAnswer || isNaN(userAnswer)) {
+
+  const rawInput = captchaInputs[product.id]
+  if (rawInput === undefined || rawInput === null || rawInput === '') {
     ElMessage.warning('请输入验证码计算结果')
     return
   }
-
-  // [创新] 秒杀地址隐藏：校验 Path Token
-  const pathToken = pathTokens[product.id]
-  if (!pathToken) {
-    ElMessage.warning('秒杀地址已过期，请刷新页面')
+  const userAnswer = parseInt(rawInput)
+  if (isNaN(userAnswer)) {
+    ElMessage.warning('验证码格式错误，请输入数字')
     return
   }
 
-  // [修复] S-23: 立即设置秒杀中状态，防止重复点击
+  const pathToken = pathTokens[product.id]
+  if (!pathToken) {
+    ElMessage.warning('秒杀地址已过期，请刷新页面')
+    refreshPathToken(product.id)
+    return
+  }
+
   seckilling.value = product.id
   try {
-    // [修复] 生成幂等性 Key，防止重复提交
-    const idempotentKey = crypto.randomUUID()
+    const idempotentKey = generateIdempotentKey()
     const data = await doSeckillApi({
       product_id: product.id,
       quantity: 1,
       idempotent_key: idempotentKey,
-      path_token: pathToken,          // [创新] 秒杀地址隐藏 Token
-      captcha_code: userAnswer,       // [创新] 数学验证码答案
-      captcha_id: captcha.captcha_id  // [创新] 验证码唯一ID
+      path_token: pathToken,
+      captcha_code: userAnswer,
+      captcha_id: captcha.captcha_id
     })
     seckillResult.value = data
     resultVisible.value = true
@@ -218,7 +262,6 @@ async function doSeckill(product) {
       grabbedCounts.value[product.id] = (grabbedCounts.value[product.id] || 0) + 1
       loadProducts()
     }
-    // [创新] 秒杀成功后刷新验证码和路径 Token
     refreshCaptcha(product.id)
     refreshPathToken(product.id)
   } catch (e) {
@@ -228,9 +271,22 @@ async function doSeckill(product) {
       const limit = product.limit_per_user || 1
       grabbedCounts.value[product.id] = limit
       ElMessage.warning(`该商品每人限购${limit}件，您已达到上限`)
-    }
-    // [创新] 秒杀失败刷新验证码和路径 Token
-    if (errMsg.includes('验证码') || errMsg.includes('地址')) {
+    } else if (errMsg.includes('验证码') || errMsg.includes('算术')) {
+      ElMessage.error('验证码错误或已过期，请重新计算')
+      refreshCaptcha(product.id)
+      refreshPathToken(product.id)
+    } else if (errMsg.includes('地址') || errMsg.includes('路径')) {
+      ElMessage.error('秒杀地址已失效，请刷新页面重试')
+      refreshCaptcha(product.id)
+      refreshPathToken(product.id)
+    } else if (errMsg.includes('库存')) {
+      ElMessage.error('库存不足，秒杀失败')
+    } else if (errMsg.includes('不在秒杀') || errMsg.includes('活动')) {
+      ElMessage.warning('不在秒杀活动时间内')
+    } else if (errMsg.includes('过多') || errMsg.includes('排队') || errMsg.includes('限流')) {
+      ElMessage.error('当前抢购人数过多，请稍后重试')
+    } else {
+      ElMessage.error(`秒杀失败: ${errMsg || '未知错误'}`)
       refreshCaptcha(product.id)
       refreshPathToken(product.id)
     }
@@ -250,7 +306,9 @@ onMounted(loadProducts)
 .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; min-height: 200px }
 .product-card { display: flex; gap: 20px; padding: 24px; transition: all .3s }
 .product-card:hover { border-color: rgba(233,69,96,.3) !important; transform: translateY(-2px) }
-.product-img { width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: rgba(233,69,96,.1); border-radius: 8px }
+.product-img { width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: rgba(233,69,96,.1); border-radius: 8px; overflow: hidden; flex-shrink: 0 }
+/* [修复] 商品真实图片样式：填满图片区域并保持比例 */
+.product-real-img { width: 100%; height: 100%; object-fit: cover; display: block }
 .product-info { flex: 1 }
 .product-name { font-size: 18px; font-weight: bold; color: var(--text-primary); margin-bottom: 4px }
 .product-desc { color: #999; font-size: 13px; margin-bottom: 12px }
@@ -264,6 +322,9 @@ onMounted(loadProducts)
 .limit-tip { font-size: 12px; color: #e6a23c; margin-top: 4px; margin-bottom: 4px }
 /* [修复] 已抢购提示样式 */
 .grabbed-tip { font-size: 12px; color: #e94560; margin-top: 8px; text-align: center }
+/* [修复] 详情跳转：图片/名称可点击 + 详情链接样式 */
+.product-img, .product-name { cursor: pointer }
+.detail-link { text-align: center; margin-top: 4px }
 /* [修复] 任务4: 验证码区域样式 */
 .captcha-row { margin-top: 8px; margin-bottom: 4px }
 .captcha-label { font-size: 12px; color: #888; display: block; margin-bottom: 4px }

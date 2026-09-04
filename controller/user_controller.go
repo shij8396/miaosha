@@ -147,3 +147,24 @@ func (ctl *UserController) ChangePassword(c *gin.Context) {
 	}
 	utils.SuccessWithMessage(c, "密码修改成功", nil)
 }
+
+// ForgotPassword 用户忘记密码 - POST /api/v1/user/forgot-password
+// 通过用户名 + 注册手机号验证身份后重置密码
+// @Summary      忘记密码
+// @Description  用户忘记密码时，通过用户名和注册手机号验证身份后重置新密码
+// @Tags         用户模块
+// @Accept       json
+// @Produce      json
+// @Param        request body model.ForgotPasswordRequest true "忘记密码请求"
+// @Success      200  {object}  utils.Response  "密码重置成功"
+// @Failure      400  {object}  utils.Response  "参数错误或验证失败"
+// @Router       /api/v1/user/forgot-password [post]
+func (ctl *UserController) ForgotPassword(c *gin.Context) {
+	var req model.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil { utils.BadRequest(c, "参数错误: "+err.Error()); return }
+	if err := ctl.userService.ForgotPassword(&req); err != nil {
+		utils.Error(c, 400, err.Error())
+		return
+	}
+	utils.SuccessWithMessage(c, "密码重置成功，请使用新密码登录", nil)
+}

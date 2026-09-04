@@ -4,14 +4,14 @@
   router 属性绑定启用路由跳转，default-active 高亮当前菜单
 -->
 <template>
-  <div class="sidebar" :class="{ collapsed: globalStore.sidebarCollapsed }">
+  <div class="sidebar" :class="{ collapsed: !globalStore.isMobile && globalStore.sidebarCollapsed }">
     <div class="logo-area" @click="router.push('/seckill')">
       <el-icon :size="28" color="#e94560"><Lightning /></el-icon>
-      <span class="logo-text" v-show="!globalStore.sidebarCollapsed">秒杀系统</span>
+      <span class="logo-text" v-show="!menuCollapsed">秒杀系统</span>
     </div>
     <el-menu
       :default-active="activeMenu"
-      :collapse="globalStore.sidebarCollapsed"
+      :collapse="menuCollapsed"
       :router="true"
       background-color="transparent"
       text-color="#999"
@@ -92,7 +92,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGlobalStore } from '@/pinia/globalStore'
 import { useUserStore } from '@/pinia/userStore'
@@ -101,6 +101,16 @@ const route = useRoute()
 const router = useRouter()
 const globalStore = useGlobalStore()
 const userStore = useUserStore()
+
+// [修复] 移动端抽屉打开时始终显示完整菜单（不受桌面端折叠状态影响）
+const menuCollapsed = computed(() => !globalStore.isMobile && globalStore.sidebarCollapsed)
+
+// [修复] 移动端：路由跳转后自动收起抽屉，避免菜单遮挡内容
+watch(() => route.path, () => {
+  if (globalStore.isMobile && globalStore.mobileSidebarOpen) {
+    globalStore.closeMobileSidebar()
+  }
+})
 
 // [修复] 当前激活菜单路径
 const activeMenu = computed(() => route.path)
@@ -187,5 +197,41 @@ function hasMenuAccess(menuGroup) {
   background: rgba(20,20,40,.95) !important;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,.06);
+}
+</style>
+
+<style>
+/* 全局响应式 —— 必须非 scoped，直接和 .sidebar base 规则放在同一 chunk */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 220px !important;
+    transform: translateX(-100%) !important;
+    transition: transform .3s ease !important;
+    z-index: 1000 !important;
+    box-shadow: none !important;
+    flex-shrink: 0 !important;
+  }
+
+  .layout-container.mobile-open .sidebar {
+    transform: translateX(0) !important;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, .45) !important;
+  }
+
+  .layout-container .main-area {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .layout-container .mobile-mask {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0, 0, 0, .5) !important;
+    z-index: 999 !important;
+  }
 }
 </style>

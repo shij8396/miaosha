@@ -5,9 +5,11 @@
     每一层都使用百分比高度继承，最终滚动由 main-content 处理
     底部状态栏固定在 main-area 底部，始终可见
   -->
-  <div class="layout-container">
+  <div class="layout-container" :class="{ 'mobile-open': globalStore.isMobile && globalStore.mobileSidebarOpen }">
+    <!-- [修复] 移动端遮罩：抽屉打开时点击遮罩关闭侧边栏 -->
+    <div class="mobile-mask" v-show="globalStore.isMobile && globalStore.mobileSidebarOpen" @click="globalStore.closeMobileSidebar()"></div>
     <SideBar />
-    <div class="main-area" :class="{ collapsed: globalStore.sidebarCollapsed }">
+    <div class="main-area" :class="{ collapsed: !globalStore.isMobile && globalStore.sidebarCollapsed }">
       <HeaderNav />
       <div class="main-content">
         <!-- [修复] 任务3: 全局加载进度条，当有 API 请求时显示 -->
@@ -53,6 +55,10 @@ const backendStatus = ref('在线')
 const globalLoading = ref(false)
 
 let timer = null
+/* [修复] 移动端：resize 监听，跨过 768px 断点时同步 isMobile */
+function onResize() {
+  globalStore.setMobile(window.innerWidth <= 768)
+}
 onMounted(() => {
   timer = setInterval(() => {
     currentTime.value = new Date().toLocaleString()
@@ -61,17 +67,19 @@ onMounted(() => {
   setLoadingChangeCallback((loading) => {
     globalLoading.value = loading
   })
+  onResize()
+  window.addEventListener('resize', onResize)
 })
 onUnmounted(() => {
   clearInterval(timer)
+  window.removeEventListener('resize', onResize)
 })
 </script>
 
 <style scoped>
-/* [修复] 使用 height: 100% 继承父容器高度，替代 100vh 避免双重计算 */
 .layout-container {
   display: flex;
-  height: 100%;       /* 继承自 .app-shell 的 100% */
+  height: 100%;
   overflow: hidden;
 }
 
@@ -81,25 +89,23 @@ onUnmounted(() => {
   flex-direction: column;
   transition: margin-left .3s;
   margin-left: 220px;
-  min-width: 0;       /* [修复] 防止 flex 子元素溢出 */
-  height: 100%;       /* [修复] 明确高度继承 */
+  min-width: 0;
+  height: 100%;
 }
 
 .main-area.collapsed {
   margin-left: 64px;
 }
 
-/* [修复] 主内容区：flex:1 自动填充剩余空间，overflow-y:auto 提供滚动 */
 .main-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
   z-index: 1;
-  min-height: 0;      /* [修复] flex 子元素默认 min-height:auto，设为0允许收缩 */
+  min-height: 0;
 }
 
-/* [修复] 任务3: 全局加载进度条，固定在 main-content 顶部 */
 .global-loading-bar {
   position: sticky;
   top: 0;
@@ -107,7 +113,6 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* [修复] 底部状态栏：固定高度，始终可见，不被内容遮挡 */
 .status-bar {
   height: 28px;
   display: flex;
@@ -118,7 +123,7 @@ onUnmounted(() => {
   border-top: 1px solid rgba(255, 255, 255, .06);
   font-size: 12px;
   color: #888;
-  flex-shrink: 0;     /* 不被压缩 */
+  flex-shrink: 0;
   z-index: 10;
 }
 
@@ -143,5 +148,50 @@ onUnmounted(() => {
 .status-dot.online {
   background: #67c23a;
   box-shadow: 0 0 4px rgba(103, 194, 58, .5);
+}
+
+.mobile-mask {
+  display: none;
+}
+</style>
+
+<style>
+/* 全局响应式样式 —— 必须非 scoped 才能跨组件生效 */
+@media (max-width: 768px) {
+  .layout-container .main-area,
+  .layout-container .main-area.collapsed {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .layout-container .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 220px !important;
+    transform: translateX(-100%) !important;
+    transition: transform .3s ease !important;
+    z-index: 1000 !important;
+    flex-shrink: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .layout-container.mobile-open .sidebar {
+    transform: translateX(0) !important;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, .45) !important;
+  }
+
+  .layout-container .mobile-mask {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0, 0, 0, .5) !important;
+    z-index: 999 !important;
+  }
+
+  .status-right {
+    display: none !important;
+  }
 }
 </style>

@@ -65,7 +65,40 @@ var (
 	mqOnce      sync.Once
 	// [修复] 缓存全局配置，供 PublishDelay 等函数使用
 	globalCfg *config.RabbitMQConfig
+
+	// [增强] MQ 发布/消费计数（数据大屏真实堆积统计）
+	mqPublished int64 // atomic，累计发布成功条数
+	mqConsumed  int64 // atomic，累计消费完成（Ack）条数
 )
+
+// [增强] MQStats MQ 实时统计（供数据大屏展示）
+type MQStats struct {
+	Published int64 `json:"published"` // 累计发布
+	Consumed  int64 `json:"consumed"`  // 累计消费
+	Backlog   int64 `json:"backlog"`   // 当前堆积（发布-消费，近似值）
+	Connected bool  `json:"connected"` // MQ 连接是否可用
+}
+
+// GetMQStats 获取 MQ 实时统计；MQ 不可用时 Connected=false，堆积按发布-消费近似
+func GetMQStats() MQStats {
+	published := atomic.LoadInt64(&mqPublished)
+	consumed := atomic.LoadInt64(&mqConsumed)
+	backlog := published - consumed
+	if backlog < 0 {
+		backlog = 0
+	}
+	return MQStats{
+		Published: published,
+		Consumed:  consumed,
+		Backlog:   backlog,
+		Connected: conn != nil && !conn.IsClosed(),
+	}
+}
+
+// IncConsumed 消费者 Ack 成功后调用（consumer.go 内埋点）
+func IncConsumed() {
+	atomic.AddInt64(&mqConsumed, 1)
+}
 
 func Init(cfg *config.RabbitMQConfig) error {
 	var initErr error
@@ -183,9 +216,14 @@ func PublishOrder(ctx context.Context, exchange, routingKey string, body []byte)
 	item := channelPool.Get()
 	item.mu.Lock()
 	defer item.mu.Unlock()
-	return item.ch.PublishWithContext(ctx, exchange, routingKey, false, false, amqp.Publishing{
+	err := item.ch.PublishWithContext(ctx, exchange, routingKey, false, false, amqp.Publishing{
 		ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body, Timestamp: time.Now(),
 	})
+	// [增强] 发布成功计数（大屏 MQ 堆积统计）
+	if err == nil {
+		atomic.AddInt64(&mqPublished, 1)
+	}
+	return err
 }
 
 // [P0-1] PublishDelay 从 ChannelPool 获取 Channel 发送延迟消息。
@@ -206,9 +244,14 @@ func PublishDelay(ctx context.Context, exchange, routingKey string, body []byte)
 	item := channelPool.Get()
 	item.mu.Lock()
 	defer item.mu.Unlock()
-	return item.ch.PublishWithContext(ctx, actualExchange, actualRoutingKey, false, false, amqp.Publishing{
+	err := item.ch.PublishWithContext(ctx, actualExchange, actualRoutingKey, false, false, amqp.Publishing{
 		ContentType: "application/json", DeliveryMode: amqp.Persistent, Body: body, Timestamp: time.Now(),
 	})
+	// [增强] 延迟消息发布成功同样计入发布计数
+	if err == nil {
+		atomic.AddInt64(&mqPublished, 1)
+	}
+	return err
 }
 
 func ConsumeOrder(queueName string) (<-chan amqp.Delivery, error) {

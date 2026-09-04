@@ -177,6 +177,8 @@ func main() {
 	// [修复] 登录/注册接口添加限流中间件，防止暴力破解（同一IP每分钟最多10次）
 	router.POST("/api/v1/user/register", middleware.LoginRateLimitMiddleware(10, 60), userController.Register)
 	router.POST("/api/v1/user/login", middleware.LoginRateLimitMiddleware(10, 60), userController.Login)
+	// [修复] 忘记密码接口：无需登录但需限流防止暴力破解
+	router.POST("/api/v1/user/forgot-password", middleware.LoginRateLimitMiddleware(5, 60), userController.ForgotPassword)
 
 	api := router.Group("/api/v1")
 	api.Use(middleware.AuthMiddleware(jwtManager))
@@ -191,6 +193,7 @@ func main() {
 		api.POST("/seckill", seckillController.Seckill)
 		api.GET("/seckill/path", seckillController.GetSeckillPath)       // [创新] 秒杀地址隐藏
 		api.GET("/seckill/captcha", seckillController.GetCaptcha)        // [创新] 数学验证码
+		api.GET("/seckill/purchased", seckillController.GetPurchasedCounts) // [修复] 用户已购数量（恢复限购按钮状态）
 		api.GET("/order/list", orderController.GetUserOrders)
 		api.GET("/order/:order_no", orderController.GetOrderDetail)
 		api.POST("/order/cancel", orderController.CancelOrder)
@@ -235,6 +238,10 @@ func main() {
 		// [创新] AI 异常检测 + WebSocket 监控端点
 		api.GET("/monitor/anomaly", monitorController.GetAnomalyStats)
 		api.GET("/monitor/ws-stats", monitorController.GetWSStats)
+		// [增强] 数据大屏补全：实时流量/热销排行/库存状态
+		api.GET("/monitor/pvuv", monitorController.GetPVUV)
+		api.GET("/monitor/hot-products", monitorController.GetHotProducts)
+		api.GET("/monitor/inventory", monitorController.GetInventory)
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

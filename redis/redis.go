@@ -138,14 +138,58 @@ func IncrUserPurchaseCount(ctx context.Context, userID, productID int64, quantit
 	return result, nil
 }
 
+// [修复] 读取用户当前已购数量（秒杀首页恢复"已抢购"按钮状态用）
+// key 不存在视为 0
+func GetUserPurchaseCount(ctx context.Context, userID, productID int64) (int, error) {
+	key := fmt.Sprintf("%s%d:%d", UserPurchasedPrefix, userID, productID)
+	count, err := rdb.Get(ctx, key).Int()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	return count, err
+}
+
 func RemoveUserPurchased(ctx context.Context, userID, productID int64) error {
 	key := fmt.Sprintf("%s%d:%d", UserPurchasedPrefix, userID, productID)
 	return rdb.Del(ctx, key).Err()
 }
 
+// [修复] 限购计数按数量递减：订单取消/超时/退款/秒杀失败回滚时使用
+// 原逻辑直接删除整个计数 key（RemoveUserPurchased），在限购>1且用户有多笔订单时，
+// 取消一单会把其他订单的已购计数一并清零，导致用户可再次购买超出限购总量。
+// 使用 Lua 保证原子性：读取当前计数 → 递减 quantity → 递减后 <= 0 时删除 key
+// INCRBY 保留原 TTL，不会重置限购记录的过期时间
+// 返回递减后的计数（key 不存在时返回 0）
+func DecrUserPurchaseCount(ctx context.Context, userID, productID int64, quantity int) (int, error) {
+	key := fmt.Sprintf("%s%d:%d", UserPurchasedPrefix, userID, productID)
+	luaScript := `
+		local current = redis.call('GET', KEYS[1])
+		if not current then return 0 end
+		current = tonumber(current)
+		local newCount = current - tonumber(ARGV[1])
+		if newCount <= 0 then
+			redis.call('DEL', KEYS[1])
+			return 0
+		end
+		redis.call('INCRBY', KEYS[1], -tonumber(ARGV[1]))
+		return newCount
+	`
+	result, err := rdb.Eval(ctx, luaScript, []string{key}, quantity).Int()
+	if err != nil {
+		return 0, fmt.Errorf("Redis递减用户购买数量失败: %w", err)
+	}
+	return result, nil
+}
+
 // [速度优化] 商品信息缓存，避免每次秒杀都查 MySQL
 // 商品信息在秒杀期间不变，缓存到 Redis 可减少 5-10ms DB 查询开销
 var ProductCachePrefix = "product_cache:"
+
+// [修复] 删除商品缓存，用于商品状态变更（上下架/编辑）时使缓存失效
+func DeleteProductCache(ctx context.Context, productID int64) error {
+	key := fmt.Sprintf("%s%d", ProductCachePrefix, productID)
+	return rdb.Del(ctx, key).Err()
+}
 
 func GetProductCache(ctx context.Context, productID int64) (name string, seckillPrice float64, limitPerUser int, status int, startTime, endTime time.Time, err error) {
 	key := fmt.Sprintf("%s%d", ProductCachePrefix, productID)
@@ -210,25 +254,34 @@ func DecrStockAndIncrPurchaseWithIdempotent(ctx context.Context, userID, product
 		local limitPerUser = tonumber(ARGV[3])
 		local idemTTL = tonumber(ARGV[4])
 
+		-- [P0-修复] 所有分支返回值必须保持统一位置语义 {remainStock, newCount, code}：
+		-- 原拒绝分支返回 {-3, current, 0}（拒绝码在第1位），而成功分支 {remainStock, newCount, 1}（code在第3位），
+		-- Go 侧统一按 result[2]=code 解析 → 拒绝时 code=0 落空 switch → 限购/库存拒绝被完全绕过，订单照样创建！
+		-- 修正后：拒绝码统一放 result[2]，result[0]=0（未扣库存），result[1]=当前已购数（供-3提示文案使用）
+
 		-- 0. 幂等性检查
 		if idemKey ~= "" then
 			local ok = redis.call('SET', idemKey, '1', 'NX', 'EX', idemTTL)
-			if not ok then return {-4, 0, 0} end
+			if not ok then return {0, 0, -4} end
 		end
 
-		-- 1. 检查并扣减库存
-		local stock = redis.call('GET', stockKey)
-		if not stock then return {-1, 0, 0} end
-		stock = tonumber(stock)
-		if stock < quantity then return {-2, 0, 0} end
-		local remainStock = stock - quantity
-		redis.call('DECRBY', stockKey, quantity)
-
-		-- 2. 检查用户限购
+		-- 1. 先检查用户限购（[修复] 限购检查必须前置于库存扣减：
+		--    原逻辑先扣库存再查限购，被限购拒绝时库存已被扣掉且未回滚，导致库存泄漏）
+		--    [修复] 判断条件改为 current + quantity > limitPerUser：
+		--    原条件 current >= limitPerUser 在 quantity > 1 时会放行超限购买
+		--    （如限购3件、已购2件、本次买2件：2 < 3 放行，累计4件超限）
 		local current = redis.call('GET', userKey)
 		if not current then current = 0 end
 		current = tonumber(current)
-		if current >= limitPerUser then return {-3, current, 0} end
+		if current + quantity > limitPerUser then return {0, current, -3} end
+
+		-- 2. 检查并扣减库存
+		local stock = redis.call('GET', stockKey)
+		if not stock then return {0, 0, -1} end
+		stock = tonumber(stock)
+		if stock < quantity then return {0, current, -2} end
+		local remainStock = stock - quantity
+		redis.call('DECRBY', stockKey, quantity)
 
 		-- 3. 累加购买计数
 		local newCount = current + quantity
@@ -269,19 +322,22 @@ func DecrStockAndIncrPurchase(ctx context.Context, userID, productID int64, quan
 		local expireSec = tonumber(ARGV[2])
 		local limitPerUser = tonumber(ARGV[3])
 
-		-- 1. 检查并扣减库存
-		local stock = redis.call('GET', stockKey)
-		if not stock then return {-1, 0, 0} end
-		stock = tonumber(stock)
-		if stock < quantity then return {-2, 0, 0} end
-		local remainStock = stock - quantity
-		redis.call('DECRBY', stockKey, quantity)
-
-		-- 2. 检查用户限购
+		-- [P0-修复] 拒绝码统一放第3位（与成功分支 {remainStock, newCount, 1} 位置语义一致），
+		-- 原拒绝分支 {-3, current, 0} 会导致 Go 侧 code=0 落空 switch，限购/库存拒绝被绕过
+		-- 1. 先检查用户限购（[修复] 限购检查前置于库存扣减，避免限购拒绝时库存泄漏；
+		--    判断条件 current + quantity > limitPerUser，防止 quantity > 1 时累计超限）
 		local current = redis.call('GET', userKey)
 		if not current then current = 0 end
 		current = tonumber(current)
-		if current >= limitPerUser then return {-3, current, 0} end
+		if current + quantity > limitPerUser then return {0, current, -3} end
+
+		-- 2. 检查并扣减库存
+		local stock = redis.call('GET', stockKey)
+		if not stock then return {0, 0, -1} end
+		stock = tonumber(stock)
+		if stock < quantity then return {0, current, -2} end
+		local remainStock = stock - quantity
+		redis.call('DECRBY', stockKey, quantity)
 
 		-- 3. 累加用户购买计数
 		local newCount = current + quantity

@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/miaosha/detector"
 	"github.com/miaosha/service"
@@ -74,4 +76,28 @@ func (ctl *MonitorController) GetAnomalyStats(c *gin.Context) {
 // [创新] GetWSStats 获取 WebSocket 连接统计 - GET /api/v1/monitor/ws-stats
 func (ctl *MonitorController) GetWSStats(c *gin.Context) {
 	utils.Success(c, ctl.wsHub.Stats())
+}
+
+// [增强] GetPVUV 实时流量（PV/UV + 最近60秒每秒请求序列）- GET /api/v1/monitor/pvuv
+func (ctl *MonitorController) GetPVUV(c *gin.Context) {
+	data := ctl.monitorService.GetPVUV()
+	utils.Success(c, data)
+}
+
+// [增强] GetHotProducts 热销商品排行 TOP N - GET /api/v1/monitor/hot-products?top=10
+// 返回真实销售件数 + Redis/DB 实时库存
+func (ctl *MonitorController) GetHotProducts(c *gin.Context) {
+	topN := 10
+	if v := c.Query("top"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50 {
+			topN = n
+		}
+	}
+	utils.Success(c, ctl.monitorService.GetHotProducts(topN))
+}
+
+// [增强] GetInventory 全量商品库存状态 - GET /api/v1/monitor/inventory
+// 按剩余率升序返回，告急库存排前，供大屏库存监控面板
+func (ctl *MonitorController) GetInventory(c *gin.Context) {
+	utils.Success(c, ctl.monitorService.GetInventory())
 }

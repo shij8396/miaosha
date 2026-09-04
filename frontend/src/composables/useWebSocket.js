@@ -4,7 +4,9 @@
 import { ref, onUnmounted } from 'vue'
 import { ElNotification } from 'element-plus'
 
-const WS_URL = `ws://localhost:8080/ws`
+// [修复] WebSocket URL 通过 Nginx 代理，不再直连后端 8080 端口（容器未映射端口）
+// 根据当前页面 location 自动生成，支持开发环境和生产环境
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 const HEARTBEAT_INTERVAL = 30000
 const RECONNECT_DELAY = 3000
 const MAX_RECONNECT = 5

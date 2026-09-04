@@ -40,6 +40,25 @@
               <div class="stat-label">MQ堆积</div>
             </div>
           </div>
+          <!-- [增强] 大屏指标补全：转化率/PV/UV/秒杀请求漏斗 -->
+          <div class="stats-row stats-row-second">
+            <div class="stat-item count-up">
+              <div class="stat-value" style="color:#b37feb">{{ stats.conversionRate }}%</div>
+              <div class="stat-label">UV转化率</div>
+            </div>
+            <div class="stat-item count-up">
+              <div class="stat-value" style="color:#e94560">{{ stats.pv }}</div>
+              <div class="stat-label">当日PV</div>
+            </div>
+            <div class="stat-item count-up">
+              <div class="stat-value" style="color:#409eff">{{ stats.uv }}</div>
+              <div class="stat-label">当日UV</div>
+            </div>
+            <div class="stat-item count-up">
+              <div class="stat-value" style="color:#67c23a">{{ stats.seckillRequests }}</div>
+              <div class="stat-label">秒杀请求</div>
+            </div>
+          </div>
         </CardGlass>
         <HotRankChart />
       </div>
@@ -63,6 +82,8 @@
             </div>
           </div>
         </CardGlass>
+        <!-- [增强] 库存实时监控面板（Redis 库存 vs 总库存，告急排前） -->
+        <InventoryPanel />
       </div>
     </div>
   </div>
@@ -76,13 +97,14 @@ import CardGlass from '@/components/Common/CardGlass.vue'
 import RealTimePV from '@/components/Chart/RealTimePV.vue'
 import HotRankChart from '@/components/Chart/HotRankChart.vue'
 import MessageStackChart from '@/components/Chart/MessageStackChart.vue'
+import InventoryPanel from '@/components/Chart/InventoryPanel.vue'
 import { ElMessage } from 'element-plus'
 
 const currentTime = ref(new Date().toLocaleString())
 let timeTimer = null
 let dataTimer = null
 
-const stats = ref({ total_orders: 0, success_rate: 0, qps: 0, mq_backlog: 0 })
+const stats = ref({ totalOrders: 0, successRate: 0, qps: 0, mqBacklog: 0, conversionRate: 0, pv: 0, uv: 0, seckillRequests: 0 })
 const alarms = ref([])
 const middleware = ref([])
 /* [修复] 任务6: 全屏状态 */
@@ -120,7 +142,12 @@ async function loadStats() {
         totalOrders: data.total_orders || 0,
         successRate: data.success_rate || 0,
         qps: data.qps || 0,
-        mqBacklog: data.mq_backlog || 0
+        mqBacklog: data.mq_backlog || 0,
+        // [增强] 大屏指标补全：转化率/PV/UV/秒杀请求（真实统计引擎数据）
+        conversionRate: (data.conversion_rate || 0).toFixed(2),
+        pv: data.pv || 0,
+        uv: data.uv || 0,
+        seckillRequests: data.seckill_requests || 0
       }
     }
   } catch (e) { /* 使用默认值 */ }
@@ -160,9 +187,9 @@ async function loadAlarmsAndMW() {
   } catch (e) { /* 使用默认值 */ }
 }
 
-/* [修复] 任务6: 监听告警变化，当有 error 级别告警时播放音效 */
+/* [修复] 任务6: 监听告警变化，当有 critical/error 级别告警时播放音效 */
 watch(alarms, (newAlarms) => {
-  const hasErrorAlarm = newAlarms.some(a => a.level === 'error')
+  const hasErrorAlarm = newAlarms.some(a => a.level === 'error' || a.level === 'critical')
   if (hasErrorAlarm && newAlarms.length > 0) {
     playAlarmSound()
   }
@@ -204,6 +231,10 @@ function exportReport() {
       ['成功率', stats.value.successRate + '%'],
       ['当前QPS', stats.value.qps],
       ['MQ堆积量', stats.value.mqBacklog],
+      ['UV转化率', stats.value.conversionRate + '%'],
+      ['当日PV', stats.value.pv],
+      ['当日UV', stats.value.uv],
+      ['秒杀请求总数', stats.value.seckillRequests],
       ['告警总数', alarms.value.filter(a => a.level !== 'info').length],
       ['中间件正常数', middleware.value.filter(m => m.status === 'up').length],
       ['中间件异常数', middleware.value.filter(m => m.status !== 'up').length],
@@ -258,13 +289,14 @@ onUnmounted(() => {
 .screen-grid { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 16px }
 .col-left, .col-center, .col-right { display: flex; flex-direction: column; gap: 16px }
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px }
+.stats-row-second { margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.06) }
 .stat-item { text-align: center }
 .stat-value { font-size: 32px; font-weight: bold }
 .stat-label { font-size: 13px; color: #999; margin-top: 4px }
 .alarm-scroll { max-height: 200px; overflow-y: auto }
 .alarm-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.03); font-size: 13px }
 .alarm-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0 }
-.alarm-dot.error { background: #e94560 }
+.alarm-dot.error, .alarm-dot.critical { background: #e94560 }
 .alarm-dot.warning { background: #e6a23c }
 .alarm-dot.info { background: #409eff }
 .alarm-msg { flex: 1; color: var(--text-primary) }

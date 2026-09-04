@@ -27,14 +27,15 @@ var orderMsgPool = sync.Pool{
 }
 
 type SeckillService struct {
-	idGen utils.IDGenerator
+	idGen        utils.IDGenerator
+	orderService *OrderService
 }
 
 func NewSeckillService(idGen utils.IDGenerator) *SeckillService {
-	return &SeckillService{idGen: idGen}
+	return &SeckillService{idGen: idGen, orderService: NewOrderService()}
 }
 
-func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID int64, quantity int, idempotentKey string, clientIP string, traceID string) (*model.SeckillResponse, error) {
+func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID int64, quantity int, skuID int64, idempotentKey string, clientIP string, traceID string) (*model.SeckillResponse, error) {
 	cfg := config.GetConfig()
 	logger := log.WithTraceID(traceID)
 	startTime := time.Now()
@@ -59,6 +60,22 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 	if status != 1 { return nil, utils.NewSeckillError(utils.ErrProductOffline, "商品已下架", 400) }
 	if now.Before(startTimeT) || now.After(endTimeT) { return nil, utils.NewSeckillError(utils.ErrNotInSeckillTime, "不在秒杀活动时间内", 400) }
 
+	// [修复] SKU 配置校验：所选配置必须属于该商品且启用
+	// 命中后价格取 SKU 配置价（不同配置不同价格），订单商品名快照追加规格描述
+	skuSpecText := ""
+	if skuID > 0 {
+		sku, err := dao.GetSKUByID(skuID)
+		if err != nil || sku.ProductID != productID {
+			return nil, utils.NewSeckillError(utils.ErrProductOffline, "商品配置不存在或已下架", 400)
+		}
+		var spec map[string]string
+		if json.Unmarshal([]byte(sku.Spec), &spec) == nil {
+			for k, v := range spec { skuSpecText += k + ":" + v + " " }
+		}
+		seckillPrice = sku.Price
+		productName = productName + "【" + skuSpecText + "】"
+	}
+
 	if limitPerUser <= 0 { limitPerUser = 1 }
 	if quantity > limitPerUser {
 		return nil, utils.NewSeckillError(utils.ErrExceedLimit, fmt.Sprintf("超出单用户限购数量（每人限购%d件）", limitPerUser), 400)
@@ -71,6 +88,8 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 	if err != nil {
 		logger.Errorw("Redis合并操作失败", "error", err, "product_id", productID)
 		monitor.IncSeckillFail(fmt.Sprintf("%d", productID), "redis_error")
+		// [增强] Redis 异常写实时告警（大屏可见，30秒去重）
+		monitor.RecordAlarm("critical", "秒杀服务", "Redis库存扣减异常："+err.Error())
 		return nil, utils.NewSeckillError(utils.ErrRedisDown, "Redis服务异常，请稍后重试", 503)
 	}
 	switch code {
@@ -93,8 +112,9 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 	orderNo, err := utils.GenerateOrderNo(s.idGen)
 	if err != nil {
 		// [P0-3] 订单号生成失败，回滚 Redis 已扣减资源
+		// [修复] 限购计数按本次数量递减，不能整键删除（会清零用户之前成功购买的计数）
 		_ = redisClient.IncrStock(ctx, productID, quantity)
-		_ = redisClient.RemoveUserPurchased(ctx, userID, productID)
+		_, _ = redisClient.DecrUserPurchaseCount(ctx, userID, productID, quantity)
 		monitor.IncSeckillFail(fmt.Sprintf("%d", productID), "order_no_error")
 		return nil, fmt.Errorf("生成订单编号失败: %w", err)
 	}
@@ -120,21 +140,44 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 
 	if err != nil {
 		// Marshal 失败：回滚 Redis 已扣减资源
+		// [修复] 限购计数按本次数量递减，不能整键删除
 		_ = redisClient.IncrStock(ctx, productID, quantity)
-		_ = redisClient.RemoveUserPurchased(ctx, userID, productID)
+		_, _ = redisClient.DecrUserPurchaseCount(ctx, userID, productID, quantity)
 		monitor.IncSeckillFail(fmt.Sprintf("%d", productID), "marshal_error")
 		return nil, fmt.Errorf("订单消息序列化失败: %w", err)
 	}
 
 	// [P0-1] ChannelPool 模式下 PublishOrder 已无全局锁竞争，发布延迟 <1ms（本地 RabbitMQ）
-	// [P0-3] 同步发布订单消息确保可靠性，失败时回滚 Redis 资源
+	// [P0-3] 同步发布订单消息确保可靠性，失败时降级为同步创建订单
 	err = mq.PublishOrder(ctx, cfg.RabbitMQ.Exchange.Order, cfg.RabbitMQ.Queue.Order, msgBody)
 	if err != nil {
-		_ = redisClient.IncrStock(ctx, productID, quantity)
-		_ = redisClient.RemoveUserPurchased(ctx, userID, productID)
-		logger.Errorw("RabbitMQ消息发送失败，已回滚Redis库存", "error", err, "order_no", orderNo)
-		monitor.IncSeckillFail(fmt.Sprintf("%d", productID), "mq_error")
-		return nil, utils.NewSeckillError(utils.ErrMQDown, "消息队列异常，请稍后重试", 503)
+		// [修复] MQ 不可用降级：不再直接失败回滚，而是同步创建订单（复用 OrderService 幂等逻辑）
+		// 场景：本地/开发环境未部署 RabbitMQ，保证秒杀主流程可用
+		logger.Warnw("RabbitMQ不可用，降级为同步创建订单", "error", err, "order_no", orderNo)
+		fallbackMsg := map[string]interface{}{
+			"order_no": orderNo, "user_id": float64(userID), "product_id": float64(productID),
+			"product_name": productName, "seckill_price": seckillPrice,
+			"quantity": float64(quantity), "total_amount": seckillPrice * float64(quantity),
+		}
+		if fbErr := s.orderService.CreateOrder(fallbackMsg); fbErr != nil {
+			// 降级也失败才回滚 Redis 资源
+			// [修复] 限购计数按本次数量递减，不能整键删除
+			_ = redisClient.IncrStock(ctx, productID, quantity)
+			_, _ = redisClient.DecrUserPurchaseCount(ctx, userID, productID, quantity)
+			logger.Errorw("同步创建订单失败，已回滚Redis库存", "error", fbErr, "order_no", orderNo)
+			monitor.IncSeckillFail(fmt.Sprintf("%d", productID), "mq_error")
+			// [增强] MQ 宕机写实时告警（大屏可见，30秒去重）
+			monitor.RecordAlarm("critical", "秒杀服务", "RabbitMQ不可用且同步降级创建订单失败")
+			return nil, utils.NewSeckillError(utils.ErrMQDown, "消息队列异常，请稍后重试", 503)
+		}
+		monitor.IncSeckillSuccess(fmt.Sprintf("%d", productID))
+		// [增强] 热销商品计数（大屏热销排行真实数据）
+		monitor.IncProductSales(productID, productName, quantity)
+		logger.Infow("MQ降级同步创建订单成功", "order_no", orderNo, "user_id", userID, "product_id", productID)
+
+		go trackBehavior(userID, productID, "success", clientIP, "", startTime, traceID)
+
+		return &model.SeckillResponse{OrderNo: orderNo, Status: "queued", Message: "秒杀排队中，请稍后查看订单状态"}, nil
 	}
 
 	// [P0-3] 延迟消息和用户行为追踪均为 fire-and-forget，不阻塞秒杀响应
@@ -144,6 +187,8 @@ func (s *SeckillService) ExecuteSeckill(ctx context.Context, userID, productID i
 
 	go trackBehavior(userID, productID, "success", clientIP, "", startTime, traceID)
 	monitor.IncSeckillSuccess(fmt.Sprintf("%d", productID))
+	// [增强] 热销商品计数（大屏热销排行真实数据）
+	monitor.IncProductSales(productID, productName, quantity)
 
 	costMs := time.Since(startTime).Milliseconds()
 	logger.Infow("秒杀排队成功", "order_no", orderNo, "user_id", userID, "product_id", productID, "cost_ms", costMs)

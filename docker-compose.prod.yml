@@ -1,0 +1,139 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: miaosha-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: /miaosha
+    ports: ["5672:5672", "15672:15672"]
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [miaosha-net]
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.21
+    container_name: miaosha-etcd
+    restart: unless-stopped
+    command: etcd --advertise-client-urls=http://0.0.0.0:2379 --listen-client-urls=http://0.0.0.0:2379 --data-dir=/var/lib/etcd
+    ports: ["2379:2379", "2380:2380"]
+    volumes: [etcd-data:/var/lib/etcd]
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://localhost:2379"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [miaosha-net]
+
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: miaosha-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    ports: ["9092:9092"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list 2>/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks: [miaosha-net]
+
+  miaosha-server:
+    build: {context: ., dockerfile: Dockerfile.prod}
+    container_name: miaosha-server
+    restart: unless-stopped
+    ports: ["8080:8080", "9090:9090"]
+    environment:
+      MIAOSHA_SERVER_PORT: "8080"
+      MIAOSHA_MYSQL_HOST: ${MIAOSHA_MYSQL_HOST}
+      MIAOSHA_MYSQL_USER: ${MIAOSHA_MYSQL_USER}
+      MIAOSHA_MYSQL_PASSWORD: ${MIAOSHA_MYSQL_PASSWORD}
+      MIAOSHA_REDIS_HOST: ${MIAOSHA_REDIS_HOST}
+      MIAOSHA_REDIS_PASSWORD: ${MIAOSHA_REDIS_PASSWORD}
+      MIAOSHA_MQ_USER: ${RABBITMQ_USER:-admin}
+      MIAOSHA_MQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      MIAOSHA_MQ_HOST: rabbitmq
+      MIAOSHA_ETCD_HOST: etcd
+      MIAOSHA_KAFKA_HOST: kafka
+      MIAOSHA_JWT_SECRET: ${MIAOSHA_JWT_SECRET}
+      MIAOSHA_SERVER_SIGN_SECRET: ${MIAOSHA_SERVER_SIGN_SECRET}
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+      etcd: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+    volumes:
+      - "./logs:/app/logs"
+      - "./config/config.prod.yaml:/app/config/config.yaml:ro"
+      - "./uploads:/app/uploads"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health?type=readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks: [miaosha-net]
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: miaosha-prometheus
+    restart: unless-stopped
+    ports: ["9091:9090"]
+    volumes:
+      - "./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "./deploy/prometheus-rules.yml:/etc/prometheus/rules/slo-rules.yml:ro"
+      - "prometheus-data:/prometheus"
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.path=/prometheus']
+    networks: [miaosha-net]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: miaosha-grafana
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-miaosha_admin_2026}
+    volumes: ["grafana-data:/var/lib/grafana", "./deploy/grafana/provisioning:/etc/grafana/provisioning:ro"]
+    networks: [miaosha-net]
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: miaosha-alertmanager
+    restart: unless-stopped
+    ports: ["9093:9093"]
+    volumes: ["./deploy/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    command: ['--config.file=/etc/alertmanager/alertmanager.yml']
+    networks: [miaosha-net]
+
+volumes:
+  rabbitmq-data:
+  etcd-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  miaosha-net: {driver: bridge}

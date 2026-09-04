@@ -1,8 +1,9 @@
 <template>
   <div class="header-nav">
     <div class="header-left">
-      <el-icon class="collapse-btn" @click="globalStore.toggleSidebar()" :size="20">
-        <Fold v-if="!globalStore.sidebarCollapsed" /><Expand v-else />
+      <!-- [修复] 移动端：折叠按钮切换抽屉；桌面端：切换侧边栏宽度 -->
+      <el-icon class="collapse-btn" @click="globalStore.isMobile ? globalStore.toggleMobileSidebar() : globalStore.toggleSidebar()" :size="20">
+        <Fold v-if="globalStore.isMobile ? globalStore.mobileSidebarOpen : !globalStore.sidebarCollapsed" /><Expand v-else />
       </el-icon>
       <el-breadcrumb separator="/">
         <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>

@@ -132,10 +132,25 @@ func MetricsMiddleware() gin.HandlerFunc {
 		start := time.Now()
 		path := c.Request.URL.Path
 		method := c.Request.Method
+		// [增强] 实时统计引擎埋点：QPS 计数（每请求 +1）
+		monitor.RecordRequest()
 		monitor.IncHTTPRequestTotal(method, path)
 		c.Next()
+		// [增强] 实时统计引擎埋点：接口耗时（用于平均响应时间）
+		monitor.RecordRequestLatency(float64(time.Since(start).Milliseconds()))
 		monitor.ObserveHTTPRequestDuration(method, path, time.Since(start).Seconds())
 		if c.Writer.Status() >= 400 { monitor.IncHTTPErrorTotal(method, path, fmt.Sprintf("%d", c.Writer.Status())) }
+		// [增强] PV/UV 埋点：登录用户取 user_id（AuthMiddleware 在 Next 内已写入），未登录取客户端IP
+		// 仅统计业务 API，排除 /metrics /health 等基础设施端点
+		if strings.HasPrefix(path, "/api/") {
+			visitorKey := c.ClientIP()
+			if uid, ok := c.Get("user_id"); ok {
+				if id, ok := uid.(int64); ok && id > 0 {
+					visitorKey = fmt.Sprintf("u_%d", id)
+				}
+			}
+			monitor.RecordVisit(visitorKey)
+		}
 	}
 }
 

@@ -64,7 +64,7 @@ func InitDB(cfg *config.MySQLConfig) error {
 		// [修复] 仅对基础表（用户、商品、对账差异、黑名单）执行 AutoMigrate
 		// 订单分表（t_order_0 ~ t_order_15）的建表逻辑由 init.sql 统一管理
 		// 不再在此处手动创建分表，避免与 SQL 初始化脚本冲突
-		err = gormDB.AutoMigrate(&model.User{}, &model.Product{}, &model.ReconDiff{}, &model.Blacklist{}, &model.AuditLog{})
+		err = gormDB.AutoMigrate(&model.User{}, &model.Product{}, &model.ProductSKU{}, &model.ReconDiff{}, &model.Blacklist{}, &model.AuditLog{})
 		if err != nil {
 			fmt.Printf("[DAO] 自动迁移警告（表可能已存在）: %v\n", err)
 		}
@@ -129,7 +129,8 @@ func GetProductList(page, pageSize int) ([]model.Product, int64, error) {
 func GetActiveProducts() ([]model.Product, error) {
 	var products []model.Product
 	now := time.Now()
-	err := GetReadDB().Where("status = 1 AND start_time <= ? AND end_time >= ?", now, now).Find(&products).Error
+	// [修复] 按创建时间倒序（ID 倒序），新添加的商品显示在最上面
+	err := GetReadDB().Where("status = 1 AND start_time <= ? AND end_time >= ?", now, now).Order("id DESC").Find(&products).Error
 	return products, err
 }
 func DeductProductStock(productID int64, quantity int) error {
@@ -140,6 +141,41 @@ func DeductProductStock(productID int64, quantity int) error {
 }
 func RollbackProductStock(productID int64, quantity int) error {
 	return GetWriteDB().Model(&model.Product{}).Where("id = ?", productID).Update("remain_stock", gorm.Expr("remain_stock + ?", quantity)).Error
+}
+
+// ProductSKU DAO：商品配置（不同配置不同价格）
+// [修复] ReplaceProductSKUs 整体替换商品的 SKU 配置（删除旧 + 写入新，软删除保留历史）
+func ReplaceProductSKUs(productID int64, skus []*model.ProductSKU) error {
+	return GetWriteDB().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("product_id = ?", productID).Delete(&model.ProductSKU{}).Error; err != nil {
+			return err
+		}
+		if len(skus) == 0 { return nil }
+		for _, s := range skus { s.ProductID = productID }
+		return tx.Create(&skus).Error
+	})
+}
+func GetProductSKUs(productID int64) ([]model.ProductSKU, error) {
+	var skus []model.ProductSKU
+	err := GetReadDB().Where("product_id = ? AND status = 1", productID).Order("id ASC").Find(&skus).Error
+	return skus, err
+}
+func GetProductSKUsMap(productIDs []int64) (map[int64][]model.ProductSKU, error) {
+	result := make(map[int64][]model.ProductSKU)
+	if len(productIDs) == 0 { return result, nil }
+	var skus []model.ProductSKU
+	err := GetReadDB().Where("product_id IN ? AND status = 1", productIDs).Order("id ASC").Find(&skus).Error
+	if err != nil { return nil, err }
+	for _, s := range skus {
+		result[s.ProductID] = append(result[s.ProductID], s)
+	}
+	return result, nil
+}
+func GetSKUByID(skuID int64) (*model.ProductSKU, error) {
+	var sku model.ProductSKU
+	err := GetReadDB().Where("id = ? AND status = 1", skuID).First(&sku).Error
+	if err != nil { return nil, err }
+	return &sku, nil
 }
 
 // Order DAO

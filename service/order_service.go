@@ -87,11 +87,13 @@ func (s *OrderService) CancelOrder(orderNo string, userID int64, reason string) 
 	} else {
 		log.L().Infow("取消订单后Redis库存已归还", "order_no", orderNo, "product_id", order.ProductID, "quantity", order.Quantity)
 	}
-	// [修复] 清除用户购买记录，允许用户重新参与秒杀
-	if err := redisClient.RemoveUserPurchased(ctx, userID, order.ProductID); err != nil {
-		log.L().Warnw("取消订单后清除用户购买记录失败", "order_no", orderNo, "user_id", userID, "error", err)
+	// [修复] 按订单数量递减用户限购计数，允许用户重新参与秒杀
+	// 原逻辑 RemoveUserPurchased 整键删除：限购>1且用户有多笔订单时，
+	// 取消一单会清零全部已购计数，导致用户可购买超出限购总量
+	if _, err := redisClient.DecrUserPurchaseCount(ctx, userID, order.ProductID, order.Quantity); err != nil {
+		log.L().Warnw("取消订单后递减用户限购计数失败", "order_no", orderNo, "user_id", userID, "product_id", order.ProductID, "quantity", order.Quantity, "error", err)
 	} else {
-		log.L().Infow("取消订单后用户购买记录已清除", "order_no", orderNo, "user_id", userID)
+		log.L().Infow("取消订单后用户限购计数已递减", "order_no", orderNo, "user_id", userID, "product_id", order.ProductID, "quantity", order.Quantity)
 	}
 	return nil
 }
@@ -146,11 +148,11 @@ func (s *OrderService) ProcessTimeoutOrder(msg map[string]interface{}) error {
 		log.L().Infow("Redis库存已归还", "order_no", orderNo, "product_id", productID, "quantity", quantity)
 	}
 
-	// [修复] 清除用户购买记录，允许用户重新参与秒杀
-	if err := redisClient.RemoveUserPurchased(ctx, userID, productID); err != nil {
-		log.L().Warnw("清除用户购买记录失败", "order_no", orderNo, "user_id", userID, "product_id", productID, "error", err)
+	// [修复] 按订单数量递减用户限购计数（原逻辑整键删除，限购>1多订单场景会清零全部计数）
+	if _, err := redisClient.DecrUserPurchaseCount(ctx, userID, productID, quantity); err != nil {
+		log.L().Warnw("递减用户限购计数失败", "order_no", orderNo, "user_id", userID, "product_id", productID, "quantity", quantity, "error", err)
 	} else {
-		log.L().Infow("用户购买记录已清除", "order_no", orderNo, "user_id", userID, "product_id", productID)
+		log.L().Infow("用户限购计数已递减", "order_no", orderNo, "user_id", userID, "product_id", productID, "quantity", quantity)
 	}
 
 	// [修复] 上报超时订单计数
@@ -206,11 +208,11 @@ func (s *OrderService) PayCallback(orderNo string, userID int64, payTime time.Ti
 	if err := dao.UpdateOrderStatusWithPayTime(orderNo, userID, model.OrderStatusPaid, &payTime, cfg.MySQL.OrderTableShardCount); err != nil {
 		return fmt.Errorf("更新订单状态失败: %w", err)
 	}
-	// 支付成功后，清除用户限购记录（该订单已支付，可以重新参与秒杀）
-	ctx := context.Background()
-	if err := redisClient.RemoveUserPurchased(ctx, userID, order.ProductID); err != nil {
-		log.L().Warnw("支付回调后清除用户购买记录失败", "order_no", orderNo, "user_id", userID, "error", err)
-	}
+	// [修复] 订单支付成功：保留用户限购计数，支付行为计入限购总额
+	// 原逻辑支付成功后清除限购记录（RemoveUserPurchased），导致用户可以
+	// "秒杀→支付→限购计数清零→再次秒杀" 无限循环购买，限购完全失效。
+	// 限购含义是"每人最多购买X件"，已支付的订单是真实成交，必须占用限购名额；
+	// 只有取消订单/超时未支付/退款（未实际持有商品）时才递减限购计数。
 	log.L().Infow("订单支付成功", "order_no", orderNo, "user_id", userID, "amount", order.TotalAmount)
 	return nil
 }
@@ -246,9 +248,11 @@ func (s *OrderService) Refund(orderNo string, userID int64, reason string) error
 	} else {
 		log.L().Infow("退款后Redis库存已归还", "order_no", orderNo, "product_id", order.ProductID, "quantity", order.Quantity)
 	}
-	// 清除用户限购记录，允许重新购买
-	if err := redisClient.RemoveUserPurchased(ctx, userID, order.ProductID); err != nil {
-		log.L().Warnw("退款后清除用户购买记录失败", "order_no", orderNo, "user_id", userID, "error", err)
+	// [修复] 按订单数量递减用户限购记录，允许重新购买（原逻辑整键删除会清零全部已购计数）
+	if _, err := redisClient.DecrUserPurchaseCount(ctx, userID, order.ProductID, order.Quantity); err != nil {
+		log.L().Warnw("退款后递减用户限购记录失败", "order_no", orderNo, "user_id", userID, "product_id", order.ProductID, "quantity", order.Quantity, "error", err)
+	} else {
+		log.L().Infow("退款后用户限购记录已递减", "order_no", orderNo, "user_id", userID, "product_id", order.ProductID, "quantity", order.Quantity)
 	}
 	log.L().Infow("订单退款成功", "order_no", orderNo, "user_id", userID, "reason", reason)
 	return nil

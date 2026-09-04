@@ -47,7 +47,7 @@
       </DataTable>
     </CardGlass>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑商品' : '新增商品'" width="560px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑商品' : '新增商品'" width="720px">
       <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
         <el-form-item label="商品名称" prop="name">
           <el-input v-model="form.name" />
@@ -89,6 +89,40 @@
         <el-form-item label="限购数量">
           <el-input-number v-model="form.limit_per_user" :min="1" :max="99" style="width:100%" />
         </el-form-item>
+        <!-- [修复] 商品配置（SKU）：多规格属性 + 每个配置独立价格/库存 -->
+        <el-form-item label="商品配置">
+          <el-switch v-model="skuEnabled" active-text="多规格" inactive-text="单规格" />
+        </el-form-item>
+        <template v-if="skuEnabled">
+          <el-form-item label="规格属性">
+            <div class="sku-attrs">
+              <div v-for="(attr, idx) in attrRows" :key="idx" class="attr-row">
+                <el-input v-model="attr.name" placeholder="属性名（如 颜色/存储/尺码）" style="width:160px" />
+                <el-input v-model="attr.values" placeholder="属性值，逗号分隔（如 黑,白,蓝）" style="flex:1" />
+                <el-button text type="danger" @click="attrRows.splice(idx, 1)">删除</el-button>
+              </div>
+              <div class="attr-actions">
+                <el-button size="small" @click="attrRows.push({ name: '', values: '' })">+ 添加属性</el-button>
+                <el-button size="small" type="primary" @click="generateSkus">生成规格组合</el-button>
+              </div>
+              <div class="attr-tip">示例（手机）：属性「存储」值 128G,256G；属性「颜色」值 黑,白 —— 生成 4 个配置各自定价</div>
+            </div>
+          </el-form-item>
+          <el-form-item label="配置明细">
+            <div class="sku-table" v-if="skuRows.length > 0">
+              <div class="sku-row sku-head">
+                <span class="c-spec">规格组合</span><span class="c-price">该配置价格</span><span class="c-stock">展示库存</span><span class="c-op">操作</span>
+              </div>
+              <div v-for="(row, idx) in skuRows" :key="idx" class="sku-row">
+                <span class="c-spec">{{ specText(row.spec) }}</span>
+                <el-input-number v-model="row.price" :min="0.01" :precision="2" :controls="false" size="small" style="width:120px" />
+                <el-input-number v-model="row.stock" :min="0" :controls="false" size="small" style="width:100px" />
+                <el-button text type="danger" size="small" @click="skuRows.splice(idx, 1)">删除</el-button>
+              </div>
+            </div>
+            <div v-else class="attr-tip">点击「生成规格组合」或编辑已有商品时自动载入</div>
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -100,7 +134,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { getProductList, createProduct, updateProduct, batchImportProducts, uploadImage } from '@/api/goodsApi'
+import { getProductList, createProduct, updateProduct, batchImportProducts, uploadImage, getProductDetail } from '@/api/goodsApi'
 import CardGlass from '@/components/Common/CardGlass.vue'
 import DataTable from '@/components/Common/DataTable.vue'
 import { ElMessage } from 'element-plus'
@@ -121,6 +155,68 @@ const editId = ref(null)
 // [修复] 图片上传状态
 const imageFile = ref(null)
 const imagePreview = ref('')
+// [修复] SKU 多规格配置状态：属性行 + 规格组合明细
+const skuEnabled = ref(false)
+const attrRows = ref([])
+const skuRows = ref([])
+
+// [修复] 规格组合文本展示：{"颜色":"黑","存储":"256G"} → 颜色:黑 存储:256G
+function specText(spec) {
+  if (!spec) return ''
+  return Object.entries(spec).map(([k, v]) => `${k}:${v}`).join(' ')
+}
+
+// [修复] 依据属性行生成笛卡尔积规格组合（上限 50 组合防误操作）
+function generateSkus() {
+  const valid = attrRows.value
+    .map(a => ({ name: (a.name || '').trim(), values: (a.values || '').split(/[，,]/).map(v => v.trim()).filter(Boolean) }))
+    .filter(a => a.name && a.values.length > 0)
+  if (valid.length === 0) {
+    ElMessage.warning('请先填写至少一行有效的规格属性（属性名 + 属性值）')
+    return
+  }
+  let combos = [{}]
+  for (const attr of valid) {
+    const next = []
+    for (const base of combos) {
+      for (const v of attr.values) {
+        next.push({ ...base, [attr.name]: v })
+      }
+    }
+    combos = next
+    if (combos.length > 50) { combos = combos.slice(0, 50); break }
+  }
+  // 保留已存在组合的价格/库存，新生成的默认用秒杀价
+  const oldMap = new Map(skuRows.value.map(r => [JSON.stringify(r.spec), r]))
+  skuRows.value = combos.map(spec => {
+    const old = oldMap.get(JSON.stringify(spec))
+    return old ? { ...old, spec } : { spec, price: form.seckill_price || 0.01, stock: 0 }
+  })
+  ElMessage.success(`已生成 ${skuRows.value.length} 个规格组合`)
+}
+
+// [修复] 编辑时从商品详情载入已有 SKU 配置
+async function loadSKUs(productId) {
+  skuEnabled.value = false
+  attrRows.value = []
+  skuRows.value = []
+  try {
+    const detail = await getProductDetail(productId)
+    const skus = (detail?.skus || []).filter(s => s.status === 1)
+    if (skus.length > 0) {
+      skuEnabled.value = true
+      skuRows.value = skus.map(s => {
+        let spec = {}
+        try { spec = JSON.parse(s.spec) } catch { /* 兼容脏数据 */ }
+        return { spec, price: s.price, stock: s.stock }
+      })
+      // 从详情 attrs 反推属性行，便于继续追加属性后重新生成
+      attrRows.value = (detail?.attrs || []).map(a => ({ name: a.name, values: (a.values || []).join(',') }))
+    }
+  } catch (e) {
+    console.error('载入SKU配置失败:', e)
+  }
+}
 
 // 客户端搜索过滤（在当前页内过滤）
 const filteredProducts = computed(() => {
@@ -160,6 +256,10 @@ function showAddDialog() {
   Object.assign(form, { name: '', description: '', price: 0, seckill_price: 0, total_stock: 100, limit_per_user: 1 })
   timeRange.value = []
   clearImage()
+  // [修复] 重置 SKU 配置状态
+  skuEnabled.value = false
+  attrRows.value = [{ name: '', values: '' }]
+  skuRows.value = []
   dialogVisible.value = true
 }
 
@@ -169,10 +269,20 @@ function showEditDialog(row) {
     name: row.name, description: row.description, price: row.price,
     seckill_price: row.seckill_price, total_stock: row.total_stock, limit_per_user: row.limit_per_user
   })
-  timeRange.value = [row.start_time, row.end_time]
+  // [修复] 后端返回 ISO 格式时间（如 2026-01-01T00:00:00+08:00），需转换为 YYYY-MM-DD HH:mm:ss 供 date-picker 和后端使用
+  const fmtTime = (t) => {
+    if (!t) return ''
+    const d = new Date(t)
+    if (isNaN(d.getTime())) return t
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
+  timeRange.value = [fmtTime(row.start_time), fmtTime(row.end_time)]
   // [修复] 编辑时显示已有图片
   imagePreview.value = row.image_url || ''
   imageFile.value = null
+  // [修复] 编辑时异步载入已有 SKU 配置
+  loadSKUs(row.id)
   dialogVisible.value = true
 }
 
@@ -201,6 +311,23 @@ async function handleSave() {
   saving.value = true
   try {
     const payload = { ...form, start_time: timeRange.value[0], end_time: timeRange.value[1] }
+    // [修复] 组装 SKU 配置：启用多规格时提交组合明细；关闭多规格时提交空数组清空配置
+    if (skuEnabled.value) {
+      if (skuRows.value.length === 0) {
+        ElMessage.warning('已启用多规格，请先「生成规格组合」并填写价格')
+        saving.value = false
+        return
+      }
+      const invalid = skuRows.value.find(r => !r.price || r.price <= 0)
+      if (invalid) {
+        ElMessage.warning(`规格「${specText(invalid.spec)}」价格必须大于 0`)
+        saving.value = false
+        return
+      }
+      payload.skus = skuRows.value.map(r => ({ spec: r.spec, price: r.price, stock: r.stock || 0 }))
+    } else if (isEdit.value) {
+      payload.skus = [] // 编辑时显式清空旧配置
+    }
     // [修复] 上传图片并获取URL
     if (imageFile.value) {
       try {
@@ -290,6 +417,19 @@ onMounted(loadProducts)
 
 <style scoped>
 .page-title { font-size: 24px; color: var(--text-primary); margin-bottom: 24px }
+/* [修复] SKU 配置编辑区域样式 */
+.sku-attrs { width: 100% }
+.attr-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px }
+.attr-actions { display: flex; gap: 8px; margin-bottom: 8px }
+.attr-tip { font-size: 12px; color: #999; line-height: 1.5 }
+.sku-table { width: 100%; border: 1px solid var(--border-color, #ebeef5); border-radius: 6px; padding: 4px 12px }
+.sku-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--border-color, #ebeef5) }
+.sku-row:last-child { border-bottom: none }
+.sku-head { color: #999; font-size: 12px }
+.sku-head .c-spec, .sku-head .c-price, .sku-head .c-stock, .sku-head .c-op { font-weight: normal }
+.c-spec { flex: 1; font-size: 13px; color: var(--text-primary) }
+.c-price, .c-stock { width: 130px; flex-shrink: 0 }
+.c-op { width: 60px; flex-shrink: 0 }
 /* [修复] 图片上传区域样式 */
 .upload-area { width: 100% }
 .upload-preview { width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px }
