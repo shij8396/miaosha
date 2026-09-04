@@ -119,13 +119,15 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 	// 借鉴 qiurunze123/miaosha（19k Stars）
 	// [修复] 验证码改为强制校验：原逻辑 req.CaptchaCode > 0 时才校验，
 	// 恶意脚本不传 captcha 字段即可绕过验证直接秒杀，属于逻辑漏洞
+	// [修复] CaptchaCode 改为指针类型：合法答案为 0（如 5-5=?）时，
+	// 原 int 类型无法区分"未传"与"答案为0"，导致合法答案被误判为缺失
 	if !isAdmin {
-		if req.CaptchaID == "" || req.CaptchaCode == 0 {
+		if req.CaptchaID == "" || req.CaptchaCode == nil {
 			log.L().Warnw("缺少验证码参数被拒绝", "user_id", uid, "product_id", req.ProductID)
 			utils.Error(c, 400, "请完成数学验证码后再参与秒杀")
 			return
 		}
-		valid, err := redisClient.GetAndVerifyCaptcha(ctx, req.CaptchaID, req.CaptchaCode)
+		valid, err := redisClient.GetAndVerifyCaptcha(ctx, req.CaptchaID, *req.CaptchaCode)
 		if err != nil || !valid {
 			log.L().Warnw("数学验证码校验失败", "user_id", uid, "product_id", req.ProductID)
 			utils.Error(c, 400, "验证码错误或已过期，请刷新后重试")
@@ -167,12 +169,16 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 		}
 	}
 
-	// [创新] 请求合并：高并发下相同商品请求合并为一次 Redis 操作，结果广播所有等待者
-	// 合并 Key = 商品ID + 用户ID，合并窗口 50ms
+	// [创新] 请求合并：高并发下相同用户+商品的并发重复请求合并为一次 Redis 操作，结果广播所有等待者
+	// 合并 Key = 用户ID + 商品ID
+	// [P0-修复] 合并窗口必须为 0（仅合并并发在途请求，结果产生后立即清除）：
+	// 原实现将成功结果缓存 50ms 并回放给窗口内所有后续请求 —— 同一 (用户,商品) 键下，
+	// 第3件超限购买、重复幂等Key、管理员第3单等"合法但应被拒绝"的请求会直接命中缓存
+	// 返回成功，绕过 Lua 限购/幂等校验，属于正确性漏洞（脚本可在窗口内连发绕过限购）。
 	mergeKey := fmt.Sprintf("seckill:%d:%d", uid, req.ProductID)
 	mergeResult, mergeErr, waiterCount := ctl.mergeGroup.Do(mergeKey, func() (interface{}, error) {
 		return ctl.seckillService.ExecuteSeckill(ctx, uid, req.ProductID, req.Quantity, req.SKUID, req.IdempotentKey, c.ClientIP(), traceID)
-	}, 50*time.Millisecond)
+	}, 0)
 
 	if waiterCount > 1 {
 		log.L().Infow("请求合并生效",

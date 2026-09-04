@@ -61,6 +61,7 @@ frontend/dist/
 
 # ===== Redis 持久化 =====
 dump.rdb
+appendonly.aof
 
 # ===== 对比分析 =====
 compare/

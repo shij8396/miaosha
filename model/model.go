@@ -183,7 +183,7 @@ type SeckillRequest struct {
 	Quantity      int    `json:"quantity" binding:"required,gt=0"`
 	IdempotentKey string `json:"idempotent_key"` // [修复] 幂等性 Key，防止重复提交
 	PathToken     string `json:"path_token"`     // [创新] 秒杀地址隐藏 Token
-	CaptchaCode   int    `json:"captcha_code"`   // [创新] 数学验证码答案
+	CaptchaCode   *int   `json:"captcha_code"`   // [创新] 数学验证码答案（指针类型：区分"未传"与"答案为0"）
 	CaptchaID     string `json:"captcha_id"`     // [创新] 验证码唯一ID，用于后端校验关联
 	SKUID         int64  `json:"sku_id"`         // [修复] 所选商品配置（SKU），0=默认配置
 }
