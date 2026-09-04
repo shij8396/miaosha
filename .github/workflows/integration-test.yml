@@ -1,0 +1,97 @@
+# [M3] 集成测试流水线 — 真实依赖（MySQL 8.0 + Redis 7）
+# 覆盖：init.sql 建库 + 后端启动 + 轻量压测冒烟（CI 参数化模式）+ 秒杀全链路集成测试
+# 运行环境：ubuntu-latest（MySQL/Redis 通过 service 容器提供，映射到 127.0.0.1）
+name: Integration Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: "123456"
+          MYSQL_DATABASE: miaosha
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -p123456"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build backend
+        run: go build -v -o miaosha-server ./cmd
+
+      # init.sql 创建分表 + 测试账号(admin/testuser) + 预置商品，后端 AutoMigrate 建基础表，两者 IF NOT EXISTS 兼容
+      - name: Init database schema & test data
+        run: mysql -h 127.0.0.1 -uroot -p123456 miaosha < scripts/init.sql
+
+      - name: Start backend
+        run: |
+          nohup ./miaosha-server > backend.log 2>&1 &
+          echo "backend pid: $!"
+
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8080/health > /dev/null; then
+              echo "✅ Backend is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Backend did not become healthy"
+          cat backend.log || true
+          exit 1
+
+      # [M3] 轻量压测冒烟：STRESS_USERS/STRESS_CONCURRENCIES 由环境变量控制
+      # 必须先于集成测试：集成测试会创建并耗尽独立商品库存，压测选最大 ID 商品避免冲突
+      - name: Lightweight stress test (CI mode)
+        run: |
+          cd stress_test
+          go run ./cmd
+        env:
+          STRESS_USERS: "20"
+          STRESS_CONCURRENCIES: "10,20"
+
+      - name: Integration test (full seckill flow)
+        run: python3 scripts/integration_test.py
+
+      - name: Upload backend log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: backend.log

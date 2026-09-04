@@ -6,13 +6,14 @@
 *.dylib
 miaosha-server
 server
-stress_test
 limit_test
+# 注意：stress_test 是源码目录（stress_test/cmd/main.go），需跟踪；编译产物 stress_test.exe 已由 *.exe 忽略
 
 # ===== 测试覆盖率 =====
 *.out
 *.test
 coverage.html
+coverage
 
 # ===== 依赖 =====
 vendor/
