@@ -84,3 +84,7 @@ miaosha-server-prod*
 # ===== 截图与临时目录 =====
 screenshot-*.png
 test_upload/
+
+# ===== Python 编译缓存 =====
+__pycache__/
+*.pyc

@@ -5,7 +5,9 @@ M2 集成测试 — 秒杀全链路真实依赖验证（本地 MySQL + Redis，R
 
 用法: python scripts/integration_test.py
 依赖: 本地后端已启动 (127.0.0.1:8080)，MySQL+Redis 就绪
+[M3] 管理员密码支持环境变量 ADMIN_PASSWORD 覆盖（默认 admin123，CI 注入 test123 与 init.sql 一致）
 """
+import os
 import sys
 import json
 import time
@@ -19,6 +21,7 @@ if sys.platform == 'win32':
 
 BASE = 'http://127.0.0.1:8080'
 SECRET = 'miaosha-sign-secret-2026'
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
 
 PASS = 0
 FAIL = 0
@@ -91,7 +94,7 @@ def main():
 
     # ---------- 1. 账号准备 ----------
     print('\n[1] 账号准备')
-    st, r = api('POST', '/api/v1/user/login', body={'username': 'admin', 'password': 'admin123'})
+    st, r = api('POST', '/api/v1/user/login', body={'username': 'admin', 'password': ADMIN_PASSWORD})
     admin_token = r.get('data', {}).get('token', '')
     check('管理员登录', st == 200 and admin_token, f'st={st}')
 

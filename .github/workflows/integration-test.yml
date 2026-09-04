@@ -78,6 +78,7 @@ jobs:
 
       # [M3] 轻量压测冒烟：STRESS_USERS/STRESS_CONCURRENCIES 由环境变量控制
       # 必须先于集成测试：集成测试会创建并耗尽独立商品库存，压测选最大 ID 商品避免冲突
+      # STRESS_ADMIN_PASSWORD=test123 与 scripts/init.sql 中 admin 账号一致
       - name: Lightweight stress test (CI mode)
         run: |
           cd stress_test
@@ -85,9 +86,13 @@ jobs:
         env:
           STRESS_USERS: "20"
           STRESS_CONCURRENCIES: "10,20"
+          STRESS_ADMIN_PASSWORD: "test123"
 
+      # [M3] ADMIN_PASSWORD=test123 与 scripts/init.sql 中 admin 账号一致
       - name: Integration test (full seckill flow)
         run: python3 scripts/integration_test.py
+        env:
+          ADMIN_PASSWORD: "test123"
 
       - name: Upload backend log on failure
         if: failure()

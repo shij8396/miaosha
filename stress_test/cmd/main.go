@@ -29,10 +29,12 @@ const (
 	BaseURL        = "http://localhost:8080"
 	Secret         = "miaosha-sign-secret-2026"
 	TestUser       = "admin"
-	TestPass       = "admin123"
 	MaxTestUsers   = 1000 // 预注册测试用户数量
 	TestUserPrefix = "stress_user_"
 )
+
+// [M3] 管理员密码支持环境变量 STRESS_ADMIN_PASSWORD 覆盖（默认 admin123，CI 注入 test123 与 init.sql 一致）
+var TestPass = "admin123"
 
 // [优化] HTTP Keep-Alive 连接池：复用 TCP 连接，避免每次请求 TCP 三次握手（节省 ~30% 耗时）
 var httpClient = &http.Client{
@@ -562,6 +564,13 @@ func printOptimizationSummary() {
 //
 //	STRESS_USERS        预注册用户数（默认 1000，同时作为 token 池上限）
 //	STRESS_CONCURRENCIES 逗号分隔的并发级别（默认 "100,300,500,1000"）
+func envStr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func envInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -590,6 +599,8 @@ func envConcurrencies(key, def string) []int {
 }
 
 func main() {
+	// [M3] 管理员密码支持环境变量覆盖（CI 注入 test123 与 init.sql 一致）
+	TestPass = envStr("STRESS_ADMIN_PASSWORD", "admin123")
 	maxConcurrency := envInt("STRESS_USERS", MaxTestUsers)
 	concurrencies := envConcurrencies("STRESS_CONCURRENCIES", "100,300,500,1000")
 
@@ -609,14 +620,14 @@ func main() {
 	_, respBody, _, err := doRequest("POST", "/api/v1/user/login", adminBody, "")
 	if err != nil {
 		fmt.Printf("  ❌ 登录失败: %v\n", err)
-		return
+		os.Exit(1) // [M3] CI 质量门禁：管理员登录失败视为压测失败，禁止假成功
 	}
 	var loginResp LoginResp
 	json.Unmarshal(respBody, &loginResp)
 	adminToken := loginResp.Data.Token
 	if adminToken == "" {
 		fmt.Printf("  ❌ 未获取到 Token: %s\n", string(respBody))
-		return
+		os.Exit(1) // [M3] CI 质量门禁：管理员登录失败视为压测失败，禁止假成功
 	}
 	fmt.Printf("  ✅ 管理员登录成功\n")
 
