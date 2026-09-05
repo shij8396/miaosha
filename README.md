@@ -1,4 +1,8 @@
 <p align="center">
+  <a href="README.md">中文</a> | <a href="README_EN.md">English</a>
+</p>
+
+<p align="center">
   <h1 align="center">Go Seckill · 企业级高并发秒杀系统</h1>
   <p align="center">
     <strong>从零实现 · 生产级 · 防超卖 · 六大层架构</strong>
