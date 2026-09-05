@@ -170,14 +170,18 @@ def main():
           f'first={r.get("code")} replay={r2.get("code")} msg={r2.get("message")}')
     time.sleep(0.3)
 
-    # ---------- 6. 管理员秒杀（豁免验证码）+ 超卖防护 ----------
-    print('\n[6] 管理员秒杀 + 超卖防护（库存=5，已耗4）')
+    # ---------- 6. 管理员秒杀（方案2：同样强制验证码）+ 超卖防护 ----------
+    print('\n[6] 管理员秒杀（强制验证码）+ 超卖防护（库存=5，已耗3）')
+    # [方案2-2026-09-05] admin 不再豁免验证码：缺失验证码必须被拒
+    st, r = api('POST', '/api/v1/seckill', admin_token,
+                {'product_id': pid, 'quantity': 1, 'idempotent_key': 'it-admin-0-' + str(int(time.time()))})
+    check('管理员缺失验证码被拒(400)', st == 200 and r.get('code') == 400, f'msg={r.get("message")}')
     # 已消耗: A2单 + B1单 = 3 单，剩 2；admin 限购=2 也适用
-    st, r = api('POST', '/api/v1/seckill', admin_token,
-                {'product_id': pid, 'quantity': 1, 'idempotent_key': 'it-admin-1-' + str(int(time.time()))})
-    check('管理员秒杀(无验证码)成功', st == 200 and r.get('code') == 200, f'msg={r.get("message")}')
-    st, r = api('POST', '/api/v1/seckill', admin_token,
-                {'product_id': pid, 'quantity': 1, 'idempotent_key': 'it-admin-2-' + str(int(time.time()))})
+    pt, cid, ans = fresh_path_captcha(admin_token, pid)
+    st, r = do_seckill(admin_token, pid, pt, cid, ans, 'it-admin-1-' + str(int(time.time())))
+    check('管理员带验证码第1单成功', st == 200 and r.get('code') == 200, f'msg={r.get("message")}')
+    pt, cid, ans = fresh_path_captcha(admin_token, pid)
+    st, r = do_seckill(admin_token, pid, pt, cid, ans, 'it-admin-2-' + str(int(time.time())))
     check('管理员第2单成功(库存清零)', st == 200 and r.get('code') == 200, f'msg={r.get("message")}')
     st, r = api('POST', '/api/v1/seckill', admin_token,
                 {'product_id': pid, 'quantity': 1, 'idempotent_key': 'it-admin-3-' + str(int(time.time()))})

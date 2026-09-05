@@ -121,18 +121,18 @@ func (ctl *SeckillController) Seckill(c *gin.Context) {
 	// 恶意脚本不传 captcha 字段即可绕过验证直接秒杀，属于逻辑漏洞
 	// [修复] CaptchaCode 改为指针类型：合法答案为 0（如 5-5=?）时，
 	// 原 int 类型无法区分"未传"与"答案为0"，导致合法答案被误判为缺失
-	if !isAdmin {
-		if req.CaptchaID == "" || req.CaptchaCode == nil {
-			log.L().Warnw("缺少验证码参数被拒绝", "user_id", uid, "product_id", req.ProductID)
-			utils.Error(c, 400, "请完成数学验证码后再参与秒杀")
-			return
-		}
-		valid, err := redisClient.GetAndVerifyCaptcha(ctx, req.CaptchaID, *req.CaptchaCode)
-		if err != nil || !valid {
-			log.L().Warnw("数学验证码校验失败", "user_id", uid, "product_id", req.ProductID)
-			utils.Error(c, 400, "验证码错误或已过期，请刷新后重试")
-			return
-		}
+	// [方案2] 2026-09-05 移除 isAdmin 豁免：管理员账号同样强制校验验证码，
+	// 与 path_token 豁免（仅普通用户）保持差异；压测工具已按 needCaptcha=true 传真实验证码，不受影响
+	if req.CaptchaID == "" || req.CaptchaCode == nil {
+		log.L().Warnw("缺少验证码参数被拒绝", "user_id", uid, "product_id", req.ProductID)
+		utils.Error(c, 400, "请完成数学验证码后再参与秒杀")
+		return
+	}
+	valid, err := redisClient.GetAndVerifyCaptcha(ctx, req.CaptchaID, *req.CaptchaCode)
+	if err != nil || !valid {
+		log.L().Warnw("数学验证码校验失败", "user_id", uid, "product_id", req.ProductID)
+		utils.Error(c, 400, "验证码错误或已过期，请刷新后重试")
+		return
 	}
 
 	// [修复] 非管理员需要经过热点参数限流
